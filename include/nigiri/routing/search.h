@@ -66,7 +66,7 @@ struct search_stats {
 
 struct routing_result {
   pareto_set<journey> const* journeys_{nullptr};
-  interval<unixtime_t> interval_;
+  interval<unixtime_t> interval1_;
   search_stats search_stats_;
   std::map<std::string, std::uint64_t> algo_stats_;
 };
@@ -332,7 +332,7 @@ struct search {
         std::chrono::duration_cast<std::chrono::milliseconds>(
             (std::chrono::steady_clock::now() - processing_start_time));
     return {.journeys_ = &state_.results_,
-            .interval_ = search_interval_,
+            .interval1_ = search_interval_,
             .search_stats_ = stats_,
             .algo_stats_ = algo_.get_stats().to_map()};
   }

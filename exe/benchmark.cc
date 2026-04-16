@@ -86,7 +86,7 @@ struct benchmark_result {
         << br.routing_result_.search_stats_.interval_extensions_
         << ", intvl_size: " << std::setw(5)
         << std::chrono::duration_cast<std::chrono::hours>(
-               br.routing_result_.interval_.size())
+               br.routing_result_.interval1_.size())
                .count()
         << "h" << ", #jrny: " << std::setfill(' ') << std::setw(2)
         << br.journeys_.size() << ")";

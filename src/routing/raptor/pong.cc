@@ -375,7 +375,7 @@ routing_result pong(timetable const& tt,
   auto starts = std::vector<start>{};
   auto result = routing_result{
       .journeys_ = &s_state.results_,
-      .interval_ = search_interval,
+      .interval1_ = search_interval,
       .search_stats_ = {.lb_time_ =
                             static_cast<std::uint64_t>(UTL_TIMING_MS(ping_lb)) +
                             static_cast<std::uint64_t>(UTL_TIMING_MS(pong_lb))},
@@ -526,7 +526,7 @@ routing_result pong(timetable const& tt,
     std::swap(x.start_time_, x.dest_time_);
   }
 
-  result.interval_ = {kFwd ? search_interval.from_ : start_time + duration_t{1},
+  result.interval1_ = {kFwd ? search_interval.from_ : start_time + duration_t{1},
                       kFwd ? start_time : search_interval.to_};
   result.algo_stats_ = (ping.get_stats() + pong.get_stats()).to_map();
   result.search_stats_.execute_time_ =
@@ -547,7 +547,7 @@ routing_result pong(timetable const& tt,
     j.legs_.back().to_ = swap(j.legs_.back().to_);
   }
 
-  enrich_with_slow_direct(tt, rtt, q, result.interval_, SearchDir,
+  enrich_with_slow_direct(tt, rtt, q, result.interval1_, SearchDir,
                           s_state.results_);
 
   utl::sort(s_state.results_, [](journey const& a, journey const& b) {
