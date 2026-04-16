@@ -36,7 +36,7 @@ static constexpr auto const kEnableCh = true;
 static constexpr auto const kChGroupParents = true;
 static constexpr auto const kChAtomicFootpaths = true;
 static constexpr auto const kChMaxLevelFraction = 1.0;
-static constexpr auto const kChMaxNodeOrderUpdateFraction = 0.98;
+static constexpr auto const kChMaxNodeOrderUpdateFraction = 0.90;
 
 struct departure {
   bool operator<(departure const& o) const {
@@ -733,15 +733,15 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
                     << " edges:" << edges << std::endl;
         }
         auto const order = static_cast<routing::label::dist_t>(std::clamp(
-            10000L + contract_stats.contracted_neighbors_ +
-                contract_stats.inserts_ + contract_stats.bad_updates_ - edges -
-                std::min(5000L, contract_stats.good_updates_ +
+            10000L + std::min(3000L, contract_stats.contracted_neighbors_) +
+                std::min(3000L, contract_stats.inserts_ + contract_stats.bad_updates_ - edges) -
+                std::min(3000L, contract_stats.good_updates_ +
                                     contract_stats.replacements_ +
                                     contract_stats.skips_) -
                 contract_stats.direct_inserts_ /
                     std::max(contract_stats.direct_inserts_, 1L) -
                 contract_stats.min_max_diff_sum /
-                    std::max(contract_stats.min_max_diff_count, 1L) / 60 / 6,
+                    std::max(contract_stats.min_max_diff_count, 1L) / 60,
             0L, 20000L));  // TODO include direct inserts, max dur
                            // and/or transfers because depending on
                            // order, shortcuts will be replaced?
