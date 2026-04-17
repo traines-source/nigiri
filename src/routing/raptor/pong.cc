@@ -380,6 +380,8 @@ routing_result pong(timetable const& tt,
                             static_cast<std::uint64_t>(UTL_TIMING_MS(ping_lb)) +
                             static_cast<std::uint64_t>(UTL_TIMING_MS(pong_lb))},
       .algo_stats_ = {}};
+  std::cout << result.interval1_.size() << std::endl;
+
   auto start_time =
       kFwd ? search_interval.from_ : search_interval.to_ - duration_t{1};
   auto const end_time =
@@ -528,6 +530,7 @@ routing_result pong(timetable const& tt,
 
   result.interval1_ = {kFwd ? search_interval.from_ : start_time + duration_t{1},
                       kFwd ? start_time : search_interval.to_};
+  std::cout << result.interval1_.size() << std::endl;
   result.algo_stats_ = (ping.get_stats() + pong.get_stats()).to_map();
   result.search_stats_.execute_time_ =
       std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -547,6 +550,7 @@ routing_result pong(timetable const& tt,
     j.legs_.back().to_ = swap(j.legs_.back().to_);
   }
 
+  std::cout << result.interval1_.size() << std::endl;
   enrich_with_slow_direct(tt, rtt, q, result.interval1_, SearchDir,
                           s_state.results_);
 
