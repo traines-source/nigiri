@@ -551,7 +551,8 @@ routing_result pong(timetable const& tt,
   }
 
   std::cout << result.interval1_.size() << std::endl;
-  enrich_with_slow_direct(tt, rtt, q, result.interval1_, SearchDir,
+  auto const iv = result.interval1_;
+  enrich_with_slow_direct(tt, rtt, q, iv, SearchDir,
                           s_state.results_);
 
   utl::sort(s_state.results_, [](journey const& a, journey const& b) {
