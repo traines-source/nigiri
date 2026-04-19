@@ -395,7 +395,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
             last_set_bit - j, false);  // TODO do in one go with first 5 days?
       }
       lsb = std::max(lsb, last_set_bit - e.deps_.at(i).days());
-      auto const traffic_days_idx = traffic_days.get_or_create_tmp(
+      auto const traffic_days_idx = traffic_days.get_or_create(  // TODO tmp
           remaining_traffic_days,
           static_cast<std::uint16_t>(last_set_bit - e.deps_.at(i).days()));
       auto const new_tooth =
@@ -460,16 +460,16 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
       s_max.max(max_saw, kChSawType);
 
       if (kChSawType == routing::saw_type::kTrafficDays) {
-        traffic_days.persist_tmp(min_saw, true);
-        traffic_days.persist_tmp(max_saw, true);
+        // traffic_days.persist_tmp(min_saw, true); TODO
+        // traffic_days.persist_tmp(max_saw, true);
       }
     }
 
     if constexpr (kChSawType != saw_type::kConstant) {
-      /*min_saw[kSawFieldMin].start_idx_ = 0U;
-      min_saw[kSawFieldMax].start_idx_ = 0U;
-      max_saw[kSawFieldMin].start_idx_ = 0U;
-      max_saw[kSawFieldMax].start_idx_ = 0U;*/
+      min_saw[kSawFieldMin].traffic_days_ = bitfield_idx_t{0U};
+      min_saw[kSawFieldMax].traffic_days_ = bitfield_idx_t{0U};
+      max_saw[kSawFieldMin].traffic_days_ = bitfield_idx_t{0U};
+      max_saw[kSawFieldMax].traffic_days_ = bitfield_idx_t{0U};
     }
 
     traffic_days.clear_tmp();
@@ -733,9 +733,10 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
                     << " edges:" << edges << std::endl;
         }
         auto const order = static_cast<routing::label::dist_t>(std::clamp(
-            10000L + std::min(3000L, contract_stats.contracted_neighbors_) +
-                std::min(3000L, contract_stats.inserts_ + contract_stats.bad_updates_ - edges) -
-                std::min(3000L, contract_stats.good_updates_ +
+            10000L + std::min(4000L, contract_stats.contracted_neighbors_) +
+                std::min(4000L, contract_stats.inserts_ +
+                                    contract_stats.bad_updates_ - edges) -
+                std::min(8000L, contract_stats.good_updates_ +
                                     contract_stats.replacements_ +
                                     contract_stats.skips_) -
                 contract_stats.direct_inserts_ /

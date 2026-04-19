@@ -71,7 +71,8 @@ struct traffic_days {
     }
     auto const len = bitfields_.size();
     for (auto& t : s) {
-      if (t.traffic_days_ != bitfield_idx_t::invalid() &&
+      if (t.mam_ != std::numeric_limits<std::int16_t>::max() &&
+          t.traffic_days_ != bitfield_idx_t::invalid() &&
           t.traffic_days_ >= len) {
         t.traffic_days_ = get_or_create(at(t.traffic_days_).first,
                                         at(t.traffic_days_).second);
@@ -143,6 +144,12 @@ struct saw {
     using reference = tooth const&;
     using pointer = tooth const*;
     using iterator_category = std::bidirectional_iterator_tag;
+
+
+    friend std::ostream& operator<<(std::ostream& out, iterator const& a) {
+      out << a.pos_ << " " << a.s_.saw_.size();
+      return out;
+    }
 
     size_t size() const { return s_.size(); }
 
@@ -797,7 +804,7 @@ struct saw {
                     : other.begin();  // assumption: when other is set, this
                                       // and other are each simplified
       auto oe = saw<SawType>{out, traffic_days_}.end();
-      if (((it.is_a_ && !multi) ||
+      if (((it.is_a_ && !multi) || saw_.empty() ||
            non_dominated(*that, ab, &remaining_traffic_days, lsb,
                          interleaved_min, false)) &&
           ((!it.is_a_ && !multi) ||
@@ -826,18 +833,20 @@ struct saw {
     out[kSawFieldMin].travel_dur_ = new_min;
     out[kSawFieldMax].travel_dur_ =
         u16_minutes{s.max()};  // TODO calc on the fly during simplify
-    /*if (saw_.empty()) {
-      out[kSawFieldMin].start_idx_ = other.saw_[kSawFieldMin].start_idx_;
-      out[kSawFieldMax].start_idx_ = other.saw_[kSawFieldMax].start_idx_;
+    if (saw_.empty()) {
+      out[kSawFieldMin].traffic_days_ = other.saw_[kSawFieldMin].traffic_days_;
+      out[kSawFieldMax].traffic_days_ = other.saw_[kSawFieldMax].traffic_days_;
     } else if (other.saw_.empty()) {
-      out[kSawFieldMin].start_idx_ = saw_[kSawFieldMin].start_idx_;
-      out[kSawFieldMax].start_idx_ = saw_[kSawFieldMax].start_idx_;
+      out[kSawFieldMin].traffic_days_ = saw_[kSawFieldMin].traffic_days_;
+      out[kSawFieldMax].traffic_days_ = saw_[kSawFieldMax].traffic_days_;
     } else {
-      out[kSawFieldMin].start_idx_ = std::min(
-          saw_[kSawFieldMin].start_idx_, other.saw_[kSawFieldMin].start_idx_);
-      out[kSawFieldMax].start_idx_ = std::max(
-          saw_[kSawFieldMax].start_idx_, other.saw_[kSawFieldMax].start_idx_);
-    }*/
+      out[kSawFieldMin].traffic_days_ =
+          std::min(saw_[kSawFieldMin].traffic_days_,
+                   other.saw_[kSawFieldMin].traffic_days_);
+      out[kSawFieldMax].traffic_days_ =
+          std::max(saw_[kSawFieldMax].traffic_days_,
+                   other.saw_[kSawFieldMax].traffic_days_);
+    }
     return s;
   }
 
@@ -1038,7 +1047,7 @@ struct saw {
                 }
                 auto& prev = out.at(idx - 1U);
                 if (prev.travel_dur_ == e.travel_dur_) {
-                  prev.traffic_days_ = traffic_days_.get_or_create_tmp(
+                  prev.traffic_days_ = traffic_days_.get_or_create(  // TODO tmp
                       traffic_days_.at(prev.traffic_days_).first |
                           traffic_days_.at(e.traffic_days_).first,
                       std::max(traffic_days_.at(prev.traffic_days_).second,
@@ -1077,11 +1086,16 @@ struct saw {
                              // day subtract? delete markers instead?*/
     }
 
-    out[kSawFieldMin].travel_dur_ = new_min;
-    /*out[kSawFieldMin].start_idx_ = saw_[kSawFieldMin].start_idx_ +
-                                   other.saw_[kSawFieldMin].start_idx_ + 1U;
-    out[kSawFieldMax].start_idx_ = saw_[kSawFieldMax].start_idx_ +
-                                   other.saw_[kSawFieldMax].start_idx_ + 1U;*/
+    if (!out.empty()) {
+      out[kSawFieldMin].travel_dur_ = new_min;
+      out[kSawFieldMin].traffic_days_ =
+          saw_[kSawFieldMin].traffic_days_ +
+          other.saw_[kSawFieldMin].traffic_days_ +
+          1U;  // TODO are direct always detected? wrong while querying?
+      out[kSawFieldMax].traffic_days_ = saw_[kSawFieldMax].traffic_days_ +
+                                        other.saw_[kSawFieldMax].traffic_days_ +
+                                        1U;
+    }
 
     auto const s = saw<SawType>{out, traffic_days_};
     return s;
@@ -1169,7 +1183,7 @@ struct saw {
             utl::verify(std::abs(d) < 24 * 60, "concat_const more than 24h");
             auto traffic_days = traffic_days_.at(traffic_days_idx).first >> 1U;
             traffic_days.set(kTimetableOffset.count() - 1U, false);
-            traffic_days_idx = traffic_days_.get_or_create_tmp(  // TODO tmp
+            traffic_days_idx = traffic_days_.get_or_create(  // TODO tmp
                 traffic_days, traffic_days_.at(traffic_days_idx).second - 1U);
           }
         }
@@ -1180,7 +1194,7 @@ struct saw {
             auto traffic_days = traffic_days_.at(traffic_days_idx).first << 1U;
             traffic_days.set(traffic_days_.at(traffic_days_idx).second + 1U,
                              false);
-            traffic_days_idx = traffic_days_.get_or_create_tmp(  // TODO tmp
+            traffic_days_idx = traffic_days_.get_or_create(  // TODO tmp
                 traffic_days, traffic_days_.at(traffic_days_idx).second);
           }
         }
@@ -1200,8 +1214,8 @@ struct saw {
              transport_idx_t::invalid(), static_cast<uint16_t>(i), 0*/});
       }
     }
-    /*out[kSawFieldMin].start_idx_ = saw_[kSawFieldMin].start_idx_;
-    out[kSawFieldMax].start_idx_ = saw_[kSawFieldMax].start_idx_;*/
+    out[kSawFieldMin].traffic_days_ = saw_[kSawFieldMin].traffic_days_;
+    out[kSawFieldMax].traffic_days_ = saw_[kSawFieldMax].traffic_days_;
     return saw<SawType>{out, traffic_days_};
   }
 
@@ -1227,6 +1241,11 @@ struct interleaved_saws {
     using reference = tooth const&;
     using pointer = tooth const*;
     using iterator_category = std::bidirectional_iterator_tag;
+
+    friend std::ostream& operator<<(std::ostream& out, iterator const& a) {
+      out << a.pos_a_ << " " << a.pos_b_ << " " << a.s_.saw_a_.saw_.size() << " " << a.s_.saw_b_.saw_.size();
+      return out;
+    }
 
     size_t size() const { return s_.saw_a_.size() + s_.saw_b_.size(); }
 
