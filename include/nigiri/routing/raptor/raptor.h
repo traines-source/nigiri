@@ -113,7 +113,7 @@ struct raptor {
       bool const require_car_transport,
       bool const is_wheelchair,
       transfer_time_settings const& tts,
-      bitvec& relevant_station_mark)
+      bitvec relevant_station_mark)
       : tt_{tt},
         rtt_{rtt},
         n_days_{tt_.internal_interval_days().size().count()},
@@ -136,7 +136,7 @@ struct raptor {
         require_car_transport_{require_car_transport},
         is_wheelchair_{is_wheelchair},
         transfer_time_settings_{tts},
-        relevant_station_mark_{relevant_station_mark} {
+        relevant_station_mark_{std::move(relevant_station_mark)} {
     assert(Vias == via_stops_.size());
     reset_arrivals();
     if (!dist_to_end_.empty()) {
@@ -213,6 +213,8 @@ struct raptor {
       auto any_marked = false;
 
       if (kUseCh) {
+        std::cout << state_.station_mark_.size() << " weird "
+                  << relevant_station_mark_.size() << std::endl;
         state_.station_mark_ &= relevant_station_mark_;
       }
       state_.station_mark_.for_each_set_bit([&](std::uint64_t const i) {
@@ -1272,7 +1274,7 @@ private:
   bool require_car_transport_;
   bool is_wheelchair_;
   transfer_time_settings transfer_time_settings_;
-  bitvec const& relevant_station_mark_;
+  bitvec const relevant_station_mark_;
 };
 
 }  // namespace nigiri::routing

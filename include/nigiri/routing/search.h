@@ -181,7 +181,7 @@ struct search {
         require_cars_allowed,
         q_.prf_idx_ == 2U,
         tts,
-        relevant_stops};
+        std::move(relevant_stops)};
   }
 
   search(timetable const& tt,
