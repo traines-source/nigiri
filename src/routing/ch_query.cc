@@ -25,6 +25,7 @@
 namespace nigiri::routing {
 
 static constexpr auto const kChMaxTravelTime = kMaxTravelTime * 5;  // TODO
+static constexpr auto const kChMaxAdditionalTransfers = kMaxTransfers;  // TODO
 static constexpr auto const kToothUnpackMode = false;
 static constexpr auto const kDirectUnpackMode = false;
 // static constexpr auto const kReconstructMode = true;
@@ -237,7 +238,7 @@ void obtain_relevant_stops(timetable const& tt,
                 << std::endl
                 << " edge max: "
                 << saw<kChSawType>{edge_max.at(dists[l_dir][edge_target]),
-                  ch_traffic_days}
+                                   ch_traffic_days}
                 << std::endl
                 << "simpl:" << saw<kChSawType>{tmp_saw, ch_traffic_days}
                 << std::endl;
@@ -415,6 +416,8 @@ void obtain_relevant_stops(timetable const& tt,
         std::numeric_limits<std::uint16_t>::max() - d);
   };
 
+  auto const min_number_transfers =
+      min_max_dist.empty() ? 0 : min_max_dist[kSawFieldMin].traffic_days_.v_;
   auto const const_min_max_dist = static_cast<int>(
       saw<kChSawType>{min_max_dist, ch_traffic_days}.max().count());
   edge_max.at(min_max_dist_idx) = min_max_dist;  // TODO avoid copy
@@ -605,18 +608,28 @@ void obtain_relevant_stops(timetable const& tt,
               kReverse, dep_min_saw, ch_edge_idx_t::invalid(),
               ch_edge_idx_t::invalid(), false, right_next);
 
-          saw<kChSawType>{left, ch_traffic_days}
-              .concat(
-                  kForward,
-                  saw<kChSawType>{tt.ch_graph_max_[prf_idx].at(unpack.first),
-                                  ch_traffic_days},
-                  ch_edge_idx_t::invalid(), ch_edge_idx_t::invalid(), true,
-                  tmp_saw)
-              .concat(kForward, saw<kChSawType>{right_next, ch_traffic_days},
-                      ch_edge_idx_t::invalid(), ch_edge_idx_t::invalid(), true,
-                      new_min_dist)
-              .simplify(saw<kChSawType>{total_max_dur_saw, ch_traffic_days},
-                        true, pushdown_left);
+          auto const pl =
+              saw<kChSawType>{left, ch_traffic_days}
+                  .concat(kForward,
+                          saw<kChSawType>{
+                              tt.ch_graph_max_[prf_idx].at(unpack.first),
+                              ch_traffic_days},
+                          ch_edge_idx_t::invalid(), ch_edge_idx_t::invalid(),
+                          true, tmp_saw)
+                  .concat(kForward,
+                          saw<kChSawType>{right_next, ch_traffic_days},
+                          ch_edge_idx_t::invalid(), ch_edge_idx_t::invalid(),
+                          true, new_min_dist);
+          if (pl.saw_[kSawFieldMin].traffic_days_ >
+              std::min(kMaxTransfers + 0U,
+                       min_number_transfers + kChMaxAdditionalTransfers)) {
+            std::cout << "skip pushdown l due transfers" << std::endl;
+            tmp_saw.clear();
+            new_min_dist.clear();
+            continue;
+          }
+          pl.simplify(saw<kChSawType>{total_max_dur_saw, ch_traffic_days}, true,
+                      pushdown_left);
 
           tmp_saw.clear();
           new_min_dist.clear();
@@ -642,18 +655,29 @@ void obtain_relevant_stops(timetable const& tt,
           tmp_saw.clear();
           new_min_dist.clear();
 
-          saw<kChSawType>{left_next, ch_traffic_days}
-              .concat(
-                  kForward,
-                  saw<kChSawType>{tt.ch_graph_max_[prf_idx].at(unpack.second),
-                                  ch_traffic_days},
-                  ch_edge_idx_t::invalid(), ch_edge_idx_t::invalid(), true,
-                  tmp_saw)
-              .concat(kForward, saw<kChSawType>{right, ch_traffic_days},
-                      ch_edge_idx_t::invalid(), ch_edge_idx_t::invalid(), true,
-                      new_min_dist)
-              .simplify(saw<kChSawType>{total_max_dur_saw, ch_traffic_days},
-                        true, pushdown_right);
+          auto const pr =
+              saw<kChSawType>{left_next, ch_traffic_days}
+                  .concat(kForward,
+                          saw<kChSawType>{
+                              tt.ch_graph_max_[prf_idx].at(unpack.second),
+                              ch_traffic_days},
+                          ch_edge_idx_t::invalid(), ch_edge_idx_t::invalid(),
+                          true, tmp_saw)
+                  .concat(kForward, saw<kChSawType>{right, ch_traffic_days},
+                          ch_edge_idx_t::invalid(), ch_edge_idx_t::invalid(),
+                          true, new_min_dist);
+          std::cout << "trabfsers" << pr.saw_[kSawFieldMin].traffic_days_
+                    << std::endl;
+          if (pr.saw_[kSawFieldMin].traffic_days_ >
+              std::min(kMaxTransfers + 0U,
+                       min_number_transfers + kChMaxAdditionalTransfers)) {
+            std::cout << "skip pushdown r due transfers" << std::endl;
+            tmp_saw.clear();
+            new_min_dist.clear();
+            continue;
+          }
+          pr.simplify(saw<kChSawType>{total_max_dur_saw, ch_traffic_days}, true,
+                      pushdown_right);
 
           tmp_saw.clear();
           new_min_dist.clear();
