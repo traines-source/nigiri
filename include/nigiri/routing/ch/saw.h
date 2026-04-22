@@ -145,7 +145,6 @@ struct saw {
     using pointer = tooth const*;
     using iterator_category = std::bidirectional_iterator_tag;
 
-
     friend std::ostream& operator<<(std::ostream& out, iterator const& a) {
       out << a.pos_ << " " << a.s_.saw_.size();
       return out;
@@ -254,8 +253,10 @@ struct saw {
     return saw_.empty() || is_constant() || saw_.size() >= kSawMetadataOffset;
   }
 
-  std::tuple<bool, size_t, size_t> _less(saw<SawType> const& b,
-                                         bool const exact_true = false) const {
+  std::tuple<bool, size_t, size_t> _less(
+      saw<SawType> const& b,
+      bool const exact_true = false,
+      interval<std::int16_t> const& filter = {0, 1440}) const {
     if (saw_.empty()) {
       return {false, 0U, 0U};
     }
@@ -266,6 +267,7 @@ struct saw {
       // TODO exact_true ?
       return {max() < b.min(), 0U, 0U};
     }
+    (void)filter;
     // if (saw_[kSawFieldMax].travel_dur_ != u16_minutes::max() &&
     // b.saw_[kSawFieldMin].travel_dur_ != u16_minutes::max() &&
     // saw_[kSawFieldMax].travel_dur_ != u16_minutes::max() &&
@@ -278,6 +280,17 @@ struct saw {
 
     for (auto b_it = interleaved.begin(); b_it != interleaved.end(); ++b_it) {
       if (b_it.is_a_) {
+        continue;
+      }
+      if (b_it->mam_ < filter.from_) {
+        // if (filter.from_ < filter.to_) {
+        break;
+        //}
+      }
+      auto next_it = b_it;  // TODO
+      ++next_it;
+      if (b_it->mam_ > filter.to_ &&
+          next_it->mam_ > filter.to_) {  // TODO other saw types
         continue;
       }
       if (b_it->travel_dur_ >= kChMaxEdgeTime) {
@@ -316,8 +329,10 @@ struct saw {
     return {true, 0U, 0U};
   }
 
-  bool less(saw<SawType> const& b, bool const exact_true = false) const {
-    auto const r = _less(b, exact_true);
+  bool less(saw<SawType> const& b,
+            bool const exact_true = false,
+            interval<std::int16_t> const& filter = {0, 1440}) const {
+    auto const r = _less(b, exact_true, filter);
     /*std::cout << "less " << std::get<0>(r) << " ";
     if (saw_.size() > 0 && b.saw_.size() > 0) {
       print_tooth(std::cout, saw_[std::get<1>(r)], traffic_days_);
@@ -352,8 +367,10 @@ struct saw {
     return !(b < a);
   }
 
-  bool leq(saw<SawType> const& b, bool const exact_false = false) const {
-    return !(b.less(*this, exact_false));
+  bool leq(saw<SawType> const& b,
+           bool const exact_false = false,
+           interval<std::int16_t> const& filter = {0, 1440}) const {
+    return !(b.less(*this, exact_false, filter));
   }
 
   friend bool operator>=(saw<SawType> const& a, saw<SawType> const& b) {
@@ -1219,6 +1236,52 @@ struct saw {
     return saw<SawType>{out, traffic_days_};
   }
 
+  std::int16_t arrival_mam(std::int16_t departure) const {
+    if (saw_.empty()) {
+      return kChMaxEdgeTime.count();
+    }
+    auto arrival = static_cast<std::int16_t>(kChMaxEdgeTime.count());
+    if (is_constant()) {
+      arrival = std::min(static_cast<std::int16_t>(std::max(
+                             0, saw_[0].travel_dur_.count() + departure)),
+                         arrival);
+    } else {
+      auto it = rbegin();
+      for (; it != this->rend(); ++it) {
+        if (it->mam_ >= departure) {
+          arrival = std::min(static_cast<std::int16_t>(std::max(
+                                 0, it->travel_dur_.count() + it->mam_)),
+                             arrival);
+          break;
+        }
+      }
+    }
+    return arrival % 1440;
+  }
+
+  std::int16_t departure_mam(std::int16_t arrival) const {
+    if (saw_.empty()) {
+      return kChMaxEdgeTime.count();
+    }
+    auto departure = static_cast<std::int16_t>(kChMaxEdgeTime.count());
+    if (is_constant()) {
+      departure =
+          std::min(static_cast<std::int16_t>(
+                       ((arrival - saw_[0].travel_dur_.count()) % 1440 + 1440)),
+                   departure);
+    } else {
+      auto it = begin();
+      for (; it != this->end(); ++it) {
+        if (it->mam_ + it->travel_dur_.count() <=
+            arrival) {  // TODO other saw types
+          departure = std::min(it->mam_, departure);
+          break;
+        }
+      }
+    }
+    return departure % 1440;
+  }
+
   std::span<tooth const> const saw_;
   traffic_days& traffic_days_;
 };
@@ -1243,7 +1306,8 @@ struct interleaved_saws {
     using iterator_category = std::bidirectional_iterator_tag;
 
     friend std::ostream& operator<<(std::ostream& out, iterator const& a) {
-      out << a.pos_a_ << " " << a.pos_b_ << " " << a.s_.saw_a_.saw_.size() << " " << a.s_.saw_b_.saw_.size();
+      out << a.pos_a_ << " " << a.pos_b_ << " " << a.s_.saw_a_.saw_.size()
+          << " " << a.s_.saw_b_.saw_.size();
       return out;
     }
 
