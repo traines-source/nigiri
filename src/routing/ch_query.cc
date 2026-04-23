@@ -419,6 +419,64 @@ void obtain_relevant_stops(timetable const& tt,
         std::numeric_limits<std::uint16_t>::max() - d);
   };
 
+  for (auto const m : meetpoints) {
+    saw<kChSawType>{edge_min.at(dists[kForward][m]), ch_traffic_days}.concat(
+        saw<kChSawType>{edge_min.at(dists[kReverse][m]), ch_traffic_days},
+        ch_edge_idx_t::invalid(), ch_edge_idx_t::invalid(), false, tmp_saw);
+    std::cout << "mp filter " << m << " "
+              << tt.get_default_translation(tt.locations_.names_.at(m)) << " "
+              << saw<kChSawType>{tmp_saw, ch_traffic_days}.min() << " "
+              << saw<kChSawType>{min_min_dist, ch_traffic_days}.min() << " "
+              << saw<kChSawType>{min_max_dist, ch_traffic_days}.max()
+              << std::endl;
+    saw<kChSawType>{tmp_saw, ch_traffic_days}.simplify(
+        saw<kChSawType>{min_min_dist, ch_traffic_days}, false, new_min_dist);
+    std::swap(min_min_dist, new_min_dist);
+    new_min_dist.clear();
+    if (saw<kChSawType>{tmp_saw, ch_traffic_days} >
+            saw<kChSawType>{min_max_dist, ch_traffic_days} ||
+        saw<kChSawType>{tmp_saw, ch_traffic_days}.min() >
+            saw<kChSawType>{min_max_dist, ch_traffic_days}
+                .max()) {  // TODO werid
+      tmp_saw.clear();
+      continue;
+    }
+
+    std::cout << "taken" << std::endl;
+    std::cout << "concat " << saw<kChSawType>{tmp_saw, ch_traffic_days}
+              << std::endl;
+    std::cout << "min_max" << saw<kChSawType>{min_max_dist, ch_traffic_days}
+              << std::endl;
+
+    tmp_saw.clear();
+    for (auto const dir : {kForward, kReverse}) {
+      auto const other_dir = dir ^ 1U;
+
+      saw<kChSawType>{min_max_dist, ch_traffic_days}.concat_const(
+          dir,
+          saw<saw_type::kConstant>{
+              saw<saw_type::kConstant>::of(saw<kChSawType>{
+                  edge_min.at(dists[other_dir][m]), ch_traffic_days}
+                                               .min()),
+              ch_traffic_days},
+          ch_edge_idx_t::invalid(), ch_edge_idx_t::invalid(), new_max_dist,
+          true);
+      saw<kChSawType>{new_max_dist, ch_traffic_days}.simplify(
+          saw<kChSawType>{edge_max.at(dists[dir][m]), ch_traffic_days}, true,
+          tmp_saw);
+      // std::swap(edge_max.at(dists[dir][m]), tmp_saw);
+      auto const d = static_cast<ch_label::dist_t>(
+          saw<kChSawType>{tmp_saw, ch_traffic_days}.max().count());
+      tmp_saw.clear();
+      new_max_dist.clear();
+      pq.push(ch_label{m,
+                       {invert(kEnableDgp ? kDistanceGroups : d),
+                        static_cast<ch_label::dist_t>(nonce_map.at(m) + 1)},
+                       static_cast<std::uint8_t>(dir)});
+      std::cout << "added mp " << d << std::endl;
+    }
+  }
+
   auto const start_mam = static_cast<std::int16_t>(
       (std::visit(utl::overloaded{
                       [](interval<unixtime_t> const start_interval) {
@@ -431,28 +489,39 @@ void obtain_relevant_stops(timetable const& tt,
           .count());
   auto const min_max_saw = saw<kChSawType>{min_max_dist, ch_traffic_days};
   auto i = 0U;
-  auto rit = min_max_saw.rbegin();
-  for (; rit != min_max_saw.rend(); ++rit) {
-    if (rit->mam_ >= start_mam || rit.base().day_offset_ > 0) {
+  auto rit = min_max_saw.end();
+  for (--rit;; --rit) {
+    if (rit->mam_ >= start_mam || rit.day_offset_ > 0) {
       ++i;
       if (i >= q.min_connection_count_) {  // TODO searchWindow?
         break;
       }
     }
   }
-  auto const allday =
-      rit.base().day_offset_ * 1440 + rit->mam_ - start_mam >= 1440;
+
+  auto const get_mam_interval = [&](interval<std::int16_t> intvl) {
+    if (intvl.size() >= 1440) {
+      return interval{static_cast<std::int16_t>(0),
+                      static_cast<std::int16_t>(1440)};
+    }
+    if (intvl.size() <= 0) {
+      return interval{static_cast<std::int16_t>(0),
+                      static_cast<std::int16_t>(0)};
+    }
+    return interval{
+        static_cast<std::int16_t>((intvl.from_ % 1440 + 1440) % 1440),
+        static_cast<std::int16_t>((intvl.to_ % 1440 + 1440) % 1440)};
+  };
+
   auto const minmax_departure =
-      allday ? interval{static_cast<std::int16_t>(0),
-                        static_cast<std::int16_t>(1440)}
-             : interval{start_mam, rit->mam_};  // TODO arriveBy, utc?
+      interval{static_cast<std::int16_t>(start_mam),
+               static_cast<std::int16_t>(
+                   rit->mam_ + rit.day_offset_ * 1440)};  // TODO arriveBy, utc?
+  auto const minmax_departure_mam = get_mam_interval(minmax_departure);
   auto const minmax_arrival =
-      allday
-          ? interval{static_cast<std::int16_t>(0),
-                     static_cast<std::int16_t>(1440)}
-          : interval{saw<kChSawType>{min_min_dist, ch_traffic_days}.arrival_mam(
-                         minmax_departure.from_),
-                     min_max_saw.arrival_mam(minmax_departure.to_)};
+      interval{saw<kChSawType>{min_min_dist, ch_traffic_days}.arrival(
+                   minmax_departure.from_),
+               min_max_saw.arrival(minmax_departure.to_)};
   auto const min_number_transfers =
       min_max_dist.empty() ? 0 : min_max_dist[kSawFieldMin].traffic_days_.v_;
   auto const const_min_max_dist = static_cast<int>(min_max_saw.max().count());
@@ -671,9 +740,6 @@ void obtain_relevant_stops(timetable const& tt,
           tmp_saw.clear();
           new_min_dist.clear();
 
-          std::cout << "filter: " << minmax_departure << " " << arrival
-                    << std::endl;
-
           if (saw<kChSawType>{pushdown_left, ch_traffic_days}.less(
                   saw<kChSawType>{left, ch_traffic_days}
                       .concat(kForward,
@@ -787,63 +853,6 @@ void obtain_relevant_stops(timetable const& tt,
     return;
   }
 
-  for (auto const m : meetpoints) {
-    saw<kChSawType>{edge_min.at(dists[kForward][m]), ch_traffic_days}.concat(
-        saw<kChSawType>{edge_min.at(dists[kReverse][m]), ch_traffic_days},
-        ch_edge_idx_t::invalid(), ch_edge_idx_t::invalid(), false, tmp_saw);
-    std::cout << "mp filter " << m << " "
-              << tt.get_default_translation(tt.locations_.names_.at(m)) << " "
-              << saw<kChSawType>{tmp_saw, ch_traffic_days}.min() << " "
-              << saw<kChSawType>{min_max_dist, ch_traffic_days}.max()
-              << std::endl;
-    if (saw<kChSawType>{tmp_saw, ch_traffic_days} >
-            saw<kChSawType>{min_max_dist, ch_traffic_days} ||
-        saw<kChSawType>{tmp_saw, ch_traffic_days}.min() >
-            saw<kChSawType>{min_max_dist, ch_traffic_days}
-                .max()) {  // TODO werid
-      tmp_saw.clear();
-      continue;
-    }
-
-    std::cout << "taken" << std::endl;
-    std::cout << "concat " << saw<kChSawType>{tmp_saw, ch_traffic_days}
-              << std::endl;
-    std::cout << "min_max" << saw<kChSawType>{min_max_dist, ch_traffic_days}
-              << std::endl;
-
-    saw<kChSawType>{tmp_saw, ch_traffic_days}.simplify(
-        saw<kChSawType>{min_min_dist, ch_traffic_days}, false, new_min_dist);
-    std::swap(min_min_dist, new_min_dist);
-    new_min_dist.clear();
-    tmp_saw.clear();
-    for (auto const dir : {kForward, kReverse}) {
-      auto const other_dir = dir ^ 1U;
-
-      saw<kChSawType>{min_max_dist, ch_traffic_days}.concat_const(
-          dir,
-          saw<saw_type::kConstant>{
-              saw<saw_type::kConstant>::of(saw<kChSawType>{
-                  edge_min.at(dists[other_dir][m]), ch_traffic_days}
-                                               .min()),
-              ch_traffic_days},
-          ch_edge_idx_t::invalid(), ch_edge_idx_t::invalid(), new_max_dist,
-          true);
-      saw<kChSawType>{new_max_dist, ch_traffic_days}.simplify(
-          saw<kChSawType>{edge_max.at(dists[dir][m]), ch_traffic_days}, true,
-          tmp_saw);
-      // std::swap(edge_max.at(dists[dir][m]), tmp_saw);
-      auto const d = static_cast<ch_label::dist_t>(
-          saw<kChSawType>{tmp_saw, ch_traffic_days}.max().count());
-      tmp_saw.clear();
-      new_max_dist.clear();
-      pq.push(ch_label{m,
-                       {invert(kEnableDgp ? kDistanceGroups : d),
-                        static_cast<ch_label::dist_t>(nonce_map.at(m) + 1)},
-                       static_cast<std::uint8_t>(dir)});
-      std::cout << "added mp " << d << std::endl;
-    }
-  }
-
   nonce_map.clear();
   nonce_map.resize(tt.n_locations());
 
@@ -901,6 +910,7 @@ void obtain_relevant_stops(timetable const& tt,
     auto const& graph = l.dir_ == kReverse ? tt.fwd_search_ch_graph_[prf_idx]
                                            : tt.bwd_search_ch_graph_[prf_idx];
 
+    auto followed_edges = 0;
     for (auto const& e_idx : graph[l.l_]) {
       // std::cout << "edge" << e_idx << std::endl;
       auto const e = tt.ch_graph_edges_[prf_idx][e_idx];
@@ -933,10 +943,10 @@ void obtain_relevant_stops(timetable const& tt,
       if (/*min_dist_via_prev_const > l_d_max ||*/
           !min_dist_via_prev.leq(
               saw<kChSawType>{edge_max_dist, ch_traffic_days}, true,
-              minmax_departure) ||
+              minmax_departure_mam) ||
           saw<kChSawType>{new_max_dist, ch_traffic_days}.less(
               saw<kChSawType>{new_min_dist, ch_traffic_days}, true,
-              minmax_departure)) {  // TODO exact_true correct?
+              minmax_departure_mam)) {  // TODO exact_true correct?
         tmp_saw.clear();
         new_min_dist.clear();
         continue;
@@ -1019,21 +1029,50 @@ void obtain_relevant_stops(timetable const& tt,
             .simplify(saw<kChSawType>{min_max_dist, ch_traffic_days}, true,
                       pushdown_max_dist);
 
-        auto const arrival =
+        auto const arrival_x =
             l.dir_ == kForward
                 ? interval{saw<kChSawType>{edge_min.at(prev_label),
                                            ch_traffic_days}
-                               .arrival_mam(minmax_departure.from_),
-                           saw<kChSawType>{tt.ch_graph_min_[prf_idx].at(e_idx),
-                                           ch_traffic_days}
-                               .departure_mam(
-                                   (saw<kChSawType>{edge_max_dist,
-                                                    ch_traffic_days}
-                                        .arrival_mam(minmax_departure.to_)))}
-                : interval{saw<kChSawType>{edge_min.at(dists[l.dir_][l.l_]),
-                                           ch_traffic_days}
-                               .departure_mam(minmax_arrival.from_),
-                           min_dist_via_prev.departure_mam(minmax_arrival.to_)};
+                               .arrival(minmax_departure.from_),
+                           std::min(
+                               minmax_arrival.to_,
+                               saw<kChSawType>{
+                                   tt.ch_graph_min_[prf_idx].at(e_idx),
+                                   ch_traffic_days}
+                                   .departure(
+                                       (saw<kChSawType>{edge_max_dist,
+                                                        ch_traffic_days}
+                                            .arrival(minmax_departure.to_))))}
+                : interval{
+                      std::max(minmax_departure.from_,
+                               saw<kChSawType>{edge_min.at(dists[l.dir_][l.l_]),
+                                               ch_traffic_days}
+                                   .departure(minmax_arrival.from_)),
+                      min_dist_via_prev.departure(minmax_arrival.to_)};
+
+        auto const arrival = get_mam_interval(arrival_x);
+
+        std::cout << "filter: dep:" << minmax_departure << " "
+                  << "mam:" << minmax_departure_mam << " arr:" << minmax_arrival
+                  << " "
+                  << "segmentdep: " << arrival_x << "mam:" << arrival << " "
+                  << interval{minmax_departure.from_,
+
+                              (saw<kChSawType>{edge_max_dist, ch_traffic_days}
+                                   .arrival(minmax_departure.to_))}
+                  << " "
+                  << interval{saw<kChSawType>{edge_min.at(dists[l.dir_][l.l_]),
+                                              ch_traffic_days}
+                                  .min(),
+                              min_dist_via_prev.min()}
+                  << " " << (l.dir_ == kForward) << std::endl;
+
+        if (arrival.size() == 0) {  // TODO exclusive to?
+          std::cout << "skip due interval" << std::endl;
+          tmp_saw.clear();
+          new_min_dist.clear();
+          continue;
+        }
 
         queue.push({e_idx,
                     static_cast<ch_label::dist_t>(
@@ -1111,7 +1150,10 @@ void obtain_relevant_stops(timetable const& tt,
           static_cast<std::uint8_t>(l.dir_)});
 
       tmp_saw.clear();
+      ++followed_edges;
     }
+    std::cout << "followed edges: " << followed_edges << "/"
+              << graph[l.l_].size() << std::endl;
     new_max_dist.clear();
   }
   // relevant_stops.one_out();

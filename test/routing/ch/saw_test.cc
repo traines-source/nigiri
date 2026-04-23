@@ -228,6 +228,33 @@ TEST(ch, saw_day_test) {
   }
 }
 
+TEST(ch, saw_day_arrival_departure_test) {
+  auto tt = timetable{};
+
+  auto const s1 = owning_saw<routing::saw_type::kDay>{
+      {metadata_tooth(0U),
+       metadata_tooth(),
+       metadata_tooth(),
+       {1001U, u16_minutes{10}, bitfield_idx_t::invalid()},
+       {1000U, u16_minutes{5}, bitfield_idx_t::invalid()}},
+      //{999U, u16_minutes{10}, bitfield_idx_t::invalid()}}, // TODO why does
+      //this create problems
+      u16_minutes{0}};
+  auto td = nigiri::routing::traffic_days{};
+
+  EXPECT_EQ(s1.to_saw(td).arrival(1001), 1011);
+  EXPECT_EQ(s1.to_saw(td).arrival(2440), 2445);
+  EXPECT_EQ(s1.to_saw(td).arrival(900), 1005);
+  EXPECT_EQ(s1.to_saw(td).arrival(2840), 3885);
+
+  EXPECT_EQ(s1.to_saw(td).departure(1011), 1001);
+  EXPECT_EQ(s1.to_saw(td).departure(2445), 2440);
+  EXPECT_EQ(s1.to_saw(td).departure(1200), 1001);
+  EXPECT_EQ(s1.to_saw(td).departure(2451), 2441);
+  EXPECT_EQ(s1.to_saw(td).departure(3000), 2441);
+  EXPECT_EQ(s1.to_saw(td).departure(10), -439);
+}
+
 TEST(ch, saw_traffic_days_test) {
   auto tt = timetable{};
 

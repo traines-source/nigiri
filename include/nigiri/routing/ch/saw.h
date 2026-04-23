@@ -214,7 +214,8 @@ struct saw {
   iterator end(saw<SawType> const& ms) { return ms.end(); }
 
   std::reverse_iterator<iterator> rbegin() const {
-    return std::make_reverse_iterator(end());
+    return std::make_reverse_iterator(
+        end());  // TODO somehow this starts with a negative day_offset?
   }
 
   std::reverse_iterator<iterator> rend() const {
@@ -282,15 +283,16 @@ struct saw {
       if (b_it.is_a_) {
         continue;
       }
-      if (b_it->mam_ < filter.from_) {
-        // if (filter.from_ < filter.to_) {
+      // TODO templ
+      // TODO domination at fringes?
+      if (b_it->mam_ < filter.from_ && filter.from_ < filter.to_) {
         break;
-        //}
       }
       auto next_it = b_it;  // TODO
       ++next_it;
-      if (b_it->mam_ > filter.to_ &&
-          next_it->mam_ > filter.to_) {  // TODO other saw types
+      if (b_it->mam_ > filter.to_ && next_it->mam_ > filter.to_ &&
+          (filter.from_ < filter.to_ ||
+           b_it->mam_ < filter.from_)) {  // TODO other saw types
         continue;
       }
       if (b_it->travel_dur_ >= kChMaxEdgeTime) {
@@ -1236,50 +1238,57 @@ struct saw {
     return saw<SawType>{out, traffic_days_};
   }
 
-  std::int16_t arrival_mam(std::int16_t departure) const {
+  std::int16_t arrival(std::int16_t departure) const {
+    auto const departure_mam = departure % 1440;
+    auto const max = static_cast<std::int16_t>(kChMaxEdgeTime.count());
     if (saw_.empty()) {
-      return kChMaxEdgeTime.count();
+      return max;
     }
-    auto arrival = static_cast<std::int16_t>(kChMaxEdgeTime.count());
     if (is_constant()) {
-      arrival = std::min(static_cast<std::int16_t>(std::max(
-                             0, saw_[0].travel_dur_.count() + departure)),
-                         arrival);
+      return std::min(
+          static_cast<std::int16_t>(saw_[0].travel_dur_.count() + departure),
+          max);
     } else {
-      auto it = rbegin();
-      for (; it != this->rend(); ++it) {
-        if (it->mam_ >= departure) {
-          arrival = std::min(static_cast<std::int16_t>(std::max(
-                                 0, it->travel_dur_.count() + it->mam_)),
-                             arrival);
-          break;
+      auto it = end();
+      for (--it;; --it) {
+        std::cout << "weord" << it->mam_ << " "
+                  << it->mam_ + it.day_offset_ * 1440 << " " << departure_mam
+                  << std::endl;
+        if (it->mam_ + it.day_offset_ * 1440 >= departure_mam) {
+          return std::min(static_cast<std::int16_t>(
+                              it->travel_dur_.count() + it->mam_ +
+                              (departure / 1440 + it.day_offset_) * 1440),
+                          max);
         }
       }
     }
-    return arrival % 1440;
+    return max;
   }
 
-  std::int16_t departure_mam(std::int16_t arrival) const {
+  std::int16_t departure(std::int16_t arrival) const {
+    auto const arrival_mam = arrival % 1440;
+
+    auto max = static_cast<std::int16_t>(kChMaxEdgeTime.count());
     if (saw_.empty()) {
-      return kChMaxEdgeTime.count();
+      return max;
     }
-    auto departure = static_cast<std::int16_t>(kChMaxEdgeTime.count());
     if (is_constant()) {
-      departure =
-          std::min(static_cast<std::int16_t>(
-                       ((arrival - saw_[0].travel_dur_.count()) % 1440 + 1440)),
-                   departure);
+      return std::min(
+          static_cast<std::int16_t>(arrival - saw_[0].travel_dur_.count()),
+          max);
     } else {
       auto it = begin();
-      for (; it != this->end(); ++it) {
-        if (it->mam_ + it->travel_dur_.count() <=
-            arrival) {  // TODO other saw types
-          departure = std::min(it->mam_, departure);
-          break;
+      for (;; ++it) {
+        if (it->mam_ + it->travel_dur_.count() + it.day_offset_ * 1440 <=
+            arrival_mam) {  // TODO other saw types
+          return std::min(
+              static_cast<std::int16_t>(
+                  it->mam_ + (arrival / 1440 + it.day_offset_) * 1440),
+              max);
         }
       }
     }
-    return departure % 1440;
+    return max;
   }
 
   std::span<tooth const> const saw_;
