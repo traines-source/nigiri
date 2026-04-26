@@ -384,6 +384,7 @@ routing_result pong(timetable const& tt,
 
   q.flip_dir();
 
+  UTL_START_TIMING(pingpong);
   // ========
   // >> PLAY!
   // --------
@@ -540,9 +541,12 @@ routing_result pong(timetable const& tt,
     std::swap(x.start_time_, x.dest_time_);
   }
 
+  UTL_STOP_TIMING(pingpong);
   result.interval_ = {kFwd ? search_interval.from_ : start_time + duration_t{1},
                       kFwd ? start_time : search_interval.to_};
-  result.algo_stats_ = (ping.get_stats() + pong.get_stats()).to_map();
+                      auto algo_stats = raptor_stats{};
+                      algo_stats.n_routing_time_ = static_cast<std::uint64_t>(UTL_TIMING_MS(pingpong));
+  result.algo_stats_ = (algo_stats + ping.get_stats() + pong.get_stats()).to_map();
   result.search_stats_.execute_time_ =
       std::chrono::duration_cast<std::chrono::milliseconds>(
           (std::chrono::steady_clock::now() - processing_start_time));

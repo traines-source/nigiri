@@ -537,13 +537,13 @@ void obtain_relevant_stops(timetable const& tt,
   auto visited = vector_map<ch_edge_idx_t, ch_label::dist_t>{};
   visited.resize(tmp_edge_offset + edge_max.size());
 
-  auto const unpack_children = [&](int const l_d_max) {
+  auto const unpack_children = [&](int) {
     while (!queue.empty()) {
       auto [child_edge_idx, child_max_dur, child_max, child_end,
             child_max_dur_saw, total_max_dur_saw, left, right, arrival,
             global_max_dur_saw] = queue.front();  // TODO avoid copy
-      std::cout << "stack " << child_edge_idx << " cmd: " << child_max_dur
-                << std::endl;
+      /*std::cout << "stack " << child_edge_idx << " cmd: " << child_max_dur
+                << std::endl;*/
 
       queue.pop();
       if (!kToothUnpackMode &&
@@ -679,7 +679,7 @@ void obtain_relevant_stops(timetable const& tt,
           tmp_saw.clear();
 
           if (transfer != location_idx_t::invalid()) {
-            std::cout << "ft ldmax" << l_d_max << " "
+            /*std::cout << "ft ldmax" << l_d_max << " "
                       << tt.get_default_translation(tt.locations_.names_.at(
                              tt.ch_graph_edges_[prf_idx][child_edge_idx].from_))
                       << " -> "
@@ -693,11 +693,11 @@ void obtain_relevant_stops(timetable const& tt,
                       << " "
                       << " dep: " << dep_min << " "
                       << saw<kChSawType>{dep_max_saw, ch_traffic_days}.max()
-                      << std::endl;
+                      << std::endl;*/
           }
           if (arr_min_saw > saw<kChSawType>{arr_max_saw, ch_traffic_days} ||
               dep_min_saw > saw<kChSawType>{dep_max_saw, ch_traffic_days}) {
-            std::cout << "skip" << std::endl;
+            //std::cout << "skip" << std::endl;
             continue;  // TODO count occurs
           }
           auto left_next = std::vector<tooth>{};  // TODO alloc
@@ -729,7 +729,7 @@ void obtain_relevant_stops(timetable const& tt,
           if (pl.saw_[kSawFieldMin].traffic_days_ >
               std::min(kMaxTransfers + 0U,
                        min_number_transfers + kChMaxAdditionalTransfers)) {
-            std::cout << "skip pushdown l due transfers" << std::endl;
+            //std::cout << "skip pushdown l due transfers" << std::endl;
             tmp_saw.clear();
             new_min_dist.clear();
             continue;
@@ -753,7 +753,7 @@ void obtain_relevant_stops(timetable const& tt,
                               ch_edge_idx_t::invalid(),
                               ch_edge_idx_t::invalid(), true, new_min_dist),
                   false, arrival)) {
-            std::cout << "skip pushdown l" << std::endl;
+            //std::cout << "skip pushdown l" << std::endl;
             tmp_saw.clear();
             new_min_dist.clear();
             continue;
@@ -773,12 +773,12 @@ void obtain_relevant_stops(timetable const& tt,
                   .concat(kForward, saw<kChSawType>{right, ch_traffic_days},
                           ch_edge_idx_t::invalid(), ch_edge_idx_t::invalid(),
                           true, new_min_dist);
-          std::cout << "trabfsers" << pr.saw_[kSawFieldMin].traffic_days_
-                    << std::endl;
+          /*std::cout << "trabfsers" << pr.saw_[kSawFieldMin].traffic_days_
+                    << std::endl;*/
           if (pr.saw_[kSawFieldMin].traffic_days_ >
               std::min(kMaxTransfers + 0U,
                        min_number_transfers + kChMaxAdditionalTransfers)) {
-            std::cout << "skip pushdown r due transfers" << std::endl;
+            //std::cout << "skip pushdown r due transfers" << std::endl;
             tmp_saw.clear();
             new_min_dist.clear();
             continue;
@@ -800,7 +800,7 @@ void obtain_relevant_stops(timetable const& tt,
                               ch_edge_idx_t::invalid(),
                               ch_edge_idx_t::invalid(), true, new_min_dist),
                   false, arrival)) {
-            std::cout << "skip pushdown r" << std::endl;
+            //std::cout << "skip pushdown r" << std::endl;
             tmp_saw.clear();
             new_min_dist.clear();
             continue;
@@ -821,8 +821,8 @@ void obtain_relevant_stops(timetable const& tt,
                saw<kChSawType>{dep_max_saw, ch_traffic_days}.max().count(),
                false, false, std::move(dep_max_saw), std::move(pushdown_right),
                std::move(left_next), right, arrival, global_max_dur_saw});
-          std::cout << "stack push " << unpack.first << " " << unpack.second
-                    << " qs:" << queue.size() << std::endl;
+          /*std::cout << "stack push " << unpack.first << " " << unpack.second
+                    << " qs:" << queue.size() << std::endl;*/
         }
       }
     }
@@ -865,12 +865,12 @@ void obtain_relevant_stops(timetable const& tt,
     if (tt.ch_levels_[prf_idx].at(l.l_) <= nonce_map.at(l.l_)) {
       continue;
     }
-    std::cout << "down " << l.l_ << " "
+    /*std::cout << "down " << l.l_ << " "
               << tt.get_default_translation(tt.locations_.names_.at(l.l_))
               // << " min: " << dists[l.dir_][l.l_].d_[kMin] << " "
               << " max: " << l_d_max << " nonce: " << l.d_[kMin]
               << " dir:" << (l.dir_ == kForward ? "fwd" : "bwd")
-              << "| l:" << tt.ch_levels_[prf_idx].at(l.l_) << std::endl;
+              << "| l:" << tt.ch_levels_[prf_idx].at(l.l_) << std::endl;*/
     nonce_map.at(l.l_) = tt.ch_levels_[prf_idx].at(l.l_);
 
     auto edge_max_dist = std::vector<tooth>{};  // TODO alloc
@@ -911,10 +911,17 @@ void obtain_relevant_stops(timetable const& tt,
                                            : tt.bwd_search_ch_graph_[prf_idx];
 
     auto followed_edges = 0;
+    auto mindist_edges = 0;
+    auto interval_edges = 0;
+    auto mindistviaprev_edges = 0;
+    auto prevlabel_edges = 0;
+    auto level_edges = 0;
     for (auto const& e_idx : graph[l.l_]) {
       // std::cout << "edge" << e_idx << std::endl;
       auto const e = tt.ch_graph_edges_[prf_idx][e_idx];
       auto const edge_target = l.dir_ == kReverse ? e.to_ : e.from_;
+      ++level_edges;
+
       if (tt.ch_levels_[prf_idx][l.l_] < tt.ch_levels_[prf_idx][edge_target]) {
         continue;
       }
@@ -922,6 +929,8 @@ void obtain_relevant_stops(timetable const& tt,
         continue;
       }
       auto const& prev_label = dists[l.dir_][edge_target];
+      ++prevlabel_edges;
+
       if (prev_label == ch_edge_idx_t::invalid()) {
         continue;
       }
@@ -938,6 +947,8 @@ void obtain_relevant_stops(timetable const& tt,
           saw<kChSawType>{edge_min.at(dists[other_dir][l.l_]), ch_traffic_days},
           ch_edge_idx_t::invalid(), ch_edge_idx_t::invalid(), false,
           new_min_dist);
+
+          ++mindistviaprev_edges;
 
       // TODO l_d_max cheat, stopping criterion, cutoff?
       if (/*min_dist_via_prev_const > l_d_max ||*/
@@ -956,13 +967,13 @@ void obtain_relevant_stops(timetable const& tt,
       tmp_saw.clear();
       new_min_dist.clear();
 
-      std::cout << "down edge " << l_d_max << " "
+      /*std::cout << "down edge " << l_d_max << " "
                 << tt.get_default_translation(tt.locations_.names_.at(
                        tt.ch_graph_edges_[prf_idx][e_idx].from_))
                 << " -> "
                 << tt.get_default_translation(tt.locations_.names_.at(
                        tt.ch_graph_edges_[prf_idx][e_idx].to_))
-                << std::endl;
+                << std::endl;*/
 
       /*if (min_dist_via_prev.max().count() >=
           kChMaxTravelTime.count()) {  // TODO expensive
@@ -1052,7 +1063,7 @@ void obtain_relevant_stops(timetable const& tt,
 
         auto const arrival = get_mam_interval(arrival_x);
 
-        std::cout << "filter: dep:" << minmax_departure << " "
+        /*std::cout << "filter: dep:" << minmax_departure << " "
                   << "mam:" << minmax_departure_mam << " arr:" << minmax_arrival
                   << " "
                   << "segmentdep: " << arrival_x << "mam:" << arrival << " "
@@ -1067,8 +1078,10 @@ void obtain_relevant_stops(timetable const& tt,
                               min_dist_via_prev.min()}
                   << " " << (l.dir_ == kForward) << std::endl;
 
+                  ++interval_edges;*/
+
         if (arrival.size() == 0) {  // TODO exclusive to?
-          std::cout << "skip due interval" << std::endl;
+          //std::cout << "skip due interval" << std::endl;
           tmp_saw.clear();
           new_min_dist.clear();
           continue;
@@ -1113,6 +1126,8 @@ void obtain_relevant_stops(timetable const& tt,
                           ch_traffic_days},
           false, new_min_dist);
 
+          ++mindist_edges;
+
       if (saw<kChSawType>{new_min_dist, ch_traffic_days} ==
           saw<kChSawType>{edge_min.at(dists[other_dir][edge_target]),
                           ch_traffic_days}) {
@@ -1128,12 +1143,12 @@ void obtain_relevant_stops(timetable const& tt,
                                      ch_traffic_days}  // TODO deconcat?
                          .min();
       utl::verify(x != u16_minutes::max(), "min is infty");
-      std::cout << "diff " << x << " ld " << l_d_max << " em "
+      /*std::cout << "diff " << x << " ld " << l_d_max << " em "
                 << saw<kChSawType>{edge_max.at(dists[l.dir_][edge_target]),
                                    ch_traffic_days}
                        .max()
                        .count()
-                << std::endl;
+                << std::endl;*/
       auto const diff = std::max(l_d_max - static_cast<int>(x.count()), 0);
       pq.push(ch_label{
           edge_target,
@@ -1153,10 +1168,15 @@ void obtain_relevant_stops(timetable const& tt,
       ++followed_edges;
     }
     std::cout << "followed edges: " << followed_edges << "/"
+    " mindist:" << mindist_edges <<
+    " interval:" << interval_edges <<
+    " mindistviaprev:"<< mindistviaprev_edges <<
+    " prevlabel:" << prevlabel_edges <<
+    " level:" << level_edges << " total:"
               << graph[l.l_].size() << std::endl;
     new_max_dist.clear();
   }
-  // relevant_stops.one_out();
+  //relevant_stops.one_out();
   /*relevant_stops.zero_out();
   for (auto l : {66733, 66707,
     66707, 14037,

@@ -1251,9 +1251,6 @@ struct saw {
     } else {
       auto it = end();
       for (--it;; --it) {
-        std::cout << "weord" << it->mam_ << " "
-                  << it->mam_ + it.day_offset_ * 1440 << " " << departure_mam
-                  << std::endl;
         if (it->mam_ + it.day_offset_ * 1440 >= departure_mam) {
           return std::min(static_cast<std::int16_t>(
                               it->travel_dur_.count() + it->mam_ +
