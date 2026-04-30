@@ -387,7 +387,7 @@ void sort_footpaths(timetable& tt) {
   }
 }
 
-void write_footpaths(timetable& tt) {
+void write_footpaths(timetable& tt, std::uint16_t const max_footpath_length) {
   assert(tt.locations_.footpaths_out_.size() == kNProfiles);
   assert(tt.locations_.footpaths_in_.size() == kNProfiles);
   assert(tt.locations_.preprocessing_footpaths_out_.size() == tt.n_locations());
@@ -396,11 +396,27 @@ void write_footpaths(timetable& tt) {
   profile_idx_t const prf_idx{0};
 
   for (auto i = location_idx_t{0U}; i != tt.n_locations(); ++i) {
+    for (auto const [j, fp] :
+         utl::enumerate(tt.locations_.preprocessing_footpaths_out_[i])) {
+      if (fp.duration().count() > max_footpath_length) {  // TODO remove
+        tt.locations_.preprocessing_footpaths_out_[i].resize(
+            static_cast<unsigned>(j));
+        break;
+      }
+    }
     tt.locations_.footpaths_out_[prf_idx].emplace_back(
         tt.locations_.preprocessing_footpaths_out_[i]);
   }
 
   for (auto i = location_idx_t{0U}; i != tt.n_locations(); ++i) {
+    for (auto const [j, fp] :
+         utl::enumerate(tt.locations_.preprocessing_footpaths_in_[i])) {
+      if (fp.duration().count() > max_footpath_length) {  // TODO remove
+        tt.locations_.preprocessing_footpaths_in_[i].resize(
+            static_cast<unsigned>(j));
+        break;
+      }
+    }
     tt.locations_.footpaths_in_[prf_idx].emplace_back(
         tt.locations_.preprocessing_footpaths_in_[i]);
   }
@@ -432,7 +448,7 @@ void build_footpaths(timetable& tt, finalize_options const opt) {
   }
   connect_components(tt, opt.max_footpath_length_, opt.adjust_footpaths_);
   sort_footpaths(tt);
-  write_footpaths(tt);
+  write_footpaths(tt, opt.max_footpath_length_);
 }
 
 }  // namespace nigiri::loader
