@@ -3,15 +3,16 @@
 #include <cstdint>
 #include <algorithm>
 #include <limits>
+#include <thread>
 #include <vector>
 
-#include "nigiri/loader/dir.h"
 #include "utl/get_or_create.h"
 #include "utl/helpers/algorithm.h"
 #include "utl/insert_sorted.h"
 #include "utl/pairwise.h"
 #include "utl/pipes/avg.h"
 
+#include "nigiri/loader/dir.h"
 #include "nigiri/common/dial.h"
 #include "nigiri/for_each_meta.h"
 #include "nigiri/logging.h"
@@ -21,9 +22,10 @@
 #include "nigiri/routing/dijkstra.h"
 #include "nigiri/routing/limits.h"
 #include "nigiri/td_footpath.h"
-
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
+
+#include "inertialflowcutter/run.h"
 
 namespace nigiri::loader {
 
@@ -36,7 +38,6 @@ static constexpr auto const kEnableCh = true;
 static constexpr auto const kChGroupParents = true;
 static constexpr auto const kChAtomicFootpaths = true;
 static constexpr auto const kChMaxLevelFraction = 1.0;
-static constexpr auto const kChMaxNodeOrderUpdateFraction = 0.90;
 
 struct departure {
   bool operator<(departure const& o) const {
@@ -708,77 +709,6 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
         }
       };
 
-  auto const update_node_order =
-      [&](location_idx_t l, std::vector<ch_edge_idx_t>& write_ahead_edges,
-          dial<routing::label, routing::get_bucket>& pq,
-          vector_map<location_idx_t, routing::label::dist_t>& current_order) {
-        auto contract_stats = ch_stats{};
-        contract_ch_node(l, write_ahead_edges, contract_stats, true);
-        auto const edges =
-            static_cast<std::int64_t>(fwd_search_ch_graph.at(l).size() +
-                                      bwd_search_ch_graph.at(l).size());
-        if (edges == 0) {
-          return false;
-        }
-        if (l.v_ % 1000 == 0) {
-          std::cout << " neighbors:" << contract_stats.contracted_neighbors_
-                    << " isnerts:" << contract_stats.inserts_
-                    << " bad:" << contract_stats.bad_updates_
-                    << " good:" << contract_stats.good_updates_
-                    << " repl:" << contract_stats.replacements_
-                    << " skip:" << contract_stats.skips_
-                    << " direct:" << contract_stats.direct_inserts_
-                    << " diff:" << contract_stats.min_max_diff_sum
-                    << " diffcount:" << contract_stats.min_max_diff_count
-                    << " edges:" << edges << std::endl;
-        }
-        auto const order = static_cast<routing::label::dist_t>(std::clamp(
-            10000L + std::min(4000L, contract_stats.contracted_neighbors_) +
-                std::min(4000L, contract_stats.inserts_ +
-                                    contract_stats.bad_updates_ - edges) -
-                std::min(8000L, contract_stats.good_updates_ +
-                                    contract_stats.replacements_ +
-                                    contract_stats.skips_) -
-                contract_stats.direct_inserts_ /
-                    std::max(contract_stats.direct_inserts_, 1L) -
-                contract_stats.min_max_diff_sum /
-                    std::max(contract_stats.min_max_diff_count, 1L) / 60,
-            0L, 20000L));  // TODO include direct inserts, max dur
-                           // and/or transfers because depending on
-                           // order, shortcuts will be replaced?
-                           // do not subtract direct_inserts because big
-                           // junctions will win
-                           // special weight for stops without transfers?
-
-        if (current_order.at(l) != order) {
-          pq.push(routing::label{l, order});
-          current_order.at(l) = order;
-        }
-        return true;
-      };
-
-  auto const update_neighbours_node_order =
-      [&](location_idx_t l, std::vector<ch_edge_idx_t>& write_ahead_edges,
-          dial<routing::label, routing::get_bucket>& pq,
-          vector_map<location_idx_t, routing::label::dist_t>& current_order) {
-        auto const& deps = fwd_search_ch_graph.at(l);
-        for (auto dep_idx : deps) {
-          auto const to = tt.ch_graph_edges_[prf_idx].at(dep_idx).to_;
-          if (tt.ch_levels_[prf_idx].at(to) > 0U) {
-            continue;
-          }
-          update_node_order(to, write_ahead_edges, pq, current_order);
-        }
-        auto const& arrs = bwd_search_ch_graph.at(l);
-        for (auto arr_idx : arrs) {
-          auto const from = tt.ch_graph_edges_[prf_idx].at(arr_idx).from_;
-          if (tt.ch_levels_[prf_idx].at(from) > 0U) {
-            continue;
-          }
-          update_node_order(from, write_ahead_edges, pq, current_order);
-        }
-      };
-
   auto const print_stats = [&]() {
     std::cout << "inserts: " << stats.inserts_
               << " direct inserts: " << stats.direct_inserts_
@@ -787,7 +717,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
               << " good updates: " << stats.good_updates_
               << " bad updates: " << stats.bad_updates_ << " avg lookahead: "
               << saw<kChSawType>::lookahead_sum /
-                     saw<kChSawType>::lookahead_count
+                     std::max(saw<kChSawType>::lookahead_count, 1UL)
               << " traffic bitfields: " << traffic_days.bitfields_.size() << "/"
               << tt.bitfields_.size() << std::endl;
   };
@@ -936,26 +866,35 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
     print_stats();
     tt.ch_levels_[prf_idx].resize(static_cast<unsigned>(tt.n_locations()));
     auto pq = dial<routing::label, routing::get_bucket>{20001};
-    auto current_order = vector_map<location_idx_t, routing::label::dist_t>{};
+    auto current_order = std::vector<location_idx_t>{};
     current_order.resize(tt.n_locations());
     auto write_ahead_edges = std::vector<ch_edge_idx_t>{};
-    std::cout << "initial node ordering..." << std::endl;
-    auto empty_stops = 0U;
-    for (auto l = location_idx_t{0}; l < tt.n_locations(); ++l) {
-      if (!update_node_order(l, write_ahead_edges, pq, current_order)) {
-        ++empty_stops;
-      }
+    std::cout << "initial node ordering... "
+              << tt.ch_graph_edges_[prf_idx].size() << std::endl;
+    auto v_tail = std::vector<unsigned>{};
+    auto v_head = std::vector<unsigned>{};
+
+    for (auto const e : tt.ch_graph_edges_[prf_idx]) {
+      v_tail.push_back(e.from_.v_);
+      v_head.push_back(e.to_.v_);
     }
+    auto const thread_count =
+        static_cast<int>(std::thread::hardware_concurrency() / 2);
+    ifc::run_inertial_flow_cutter(
+        thread_count, static_cast<int>(tt.n_locations()), v_head, v_tail,
+        [&](int i) {
+          auto const p = tt.locations_.coordinates_[location_idx_t{i}];
+          return std::pair<double, double>{p.lng(), p.lat()};
+        },
+        [&](int node_idx, int level) {
+          current_order[static_cast<size_t>(level)] = location_idx_t{node_idx};
+        });
+    auto empty_stops = 0U;
     std::cout << "initial node ordering done" << std::endl;
     write_ahead_edges.clear();
-    auto level = empty_stops;
-    while (!pq.empty()) {
-      auto const& label = pq.top();
-      auto const location_id = label.l_;
-      auto const order = label.d_;
-      pq.pop();
-      if (current_order.at(location_id) != order ||
-          tt.ch_levels_[prf_idx].at(location_id) > 0U) {
+    for (auto level = 0U; level < tt.n_locations();) {
+      auto const location_id = current_order[level];
+      if (tt.ch_levels_[prf_idx].at(location_id) > 0U) {
         continue;
       }
       if (level > kChMaxLevelFraction * tt.n_locations()) {  // TODO
@@ -988,24 +927,22 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
             << "/" << bwd_search_ch_graph.at(location_id).size() << " "
             << location_id << " "
             << tt.get_default_translation(tt.locations_.names_.at(location_id))
-            << " " << order << std::endl;
+            << std::endl;
         print_stats();
         if (level % 1000 == 0) {
           print_edge_stats();
         }
-        std::cout << " empty stops: " << empty_stops
-                  << " edges: " << tt.ch_graph_edges_[prf_idx].size()
-                  << " stations: " << tt.n_locations() << " transfers size: "
-                  << std::accumulate(std::next(transfers.begin()),
-                                     transfers.end(), 0U,
-                                     [](auto const& a, auto const& b) {
-                                       return a + b.size();
-                                     })
-                  << std::endl;
-      }
-      if (level <= kChMaxNodeOrderUpdateFraction * tt.n_locations()) {
-        update_neighbours_node_order(location_id, write_ahead_edges, pq,
-                                     current_order);
+        if (tt.ch_graph_edges_[prf_idx].size() > 0) {
+          std::cout << " empty stops: " << empty_stops
+                    << " edges: " << tt.ch_graph_edges_[prf_idx].size()
+                    << " stations: " << tt.n_locations() << " transfers size: "
+                    << std::accumulate(std::next(transfers.begin()),
+                                       transfers.end(), 0U,
+                                       [](auto const& a, auto const& b) {
+                                         return a + b.size();
+                                       })
+                    << std::endl;
+        }
       }
     }
     std::cout << "ch done, starting dgp" << std::endl;

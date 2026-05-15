@@ -105,6 +105,7 @@ target_link_libraries(
   PRIVATE
   boost-iostreams
   zlibstatic
+  inertialflowcutter
 )
 target_compile_features(nigiri PUBLIC cxx_std_23)
 target_compile_options(nigiri PRIVATE ${nigiri-compile-options})
