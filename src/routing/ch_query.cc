@@ -448,6 +448,8 @@ void obtain_relevant_stops(timetable const& tt,
               << std::endl;
     std::cout << "min_max" << saw<kChSawType>{min_max_dist, ch_traffic_days}
               << std::endl;
+    std::cout << "min_min" << saw<kChSawType>{min_min_dist, ch_traffic_days}
+              << std::endl;
 
     tmp_saw.clear();
     for (auto const dir : {kForward, kReverse}) {
@@ -518,6 +520,13 @@ void obtain_relevant_stops(timetable const& tt,
       interval{static_cast<std::int16_t>(start_mam),
                static_cast<std::int16_t>(
                    rit->mam_ + rit.day_offset_ * 1440)};  // TODO arriveBy, utc?
+
+  if (minmax_departure.size() > 1440) {
+    relevant_stops.one_out();
+    std::cout << "24h filter, skipping ch" << std::endl;
+    return;
+  }
+
   auto const minmax_departure_mam = get_mam_interval(minmax_departure);
   auto const minmax_arrival =
       interval{saw<kChSawType>{min_min_dist, ch_traffic_days}.arrival(
@@ -762,6 +771,21 @@ void obtain_relevant_stops(timetable const& tt,
                   (saw<kChSawType>{right_next, ch_traffic_days}.departure(
                       minmax_arrival.to_)))});
 
+          auto const arrival_left_next = get_mam_interval(
+              interval{saw<kChSawType>{left_next, ch_traffic_days}.arrival(
+                           minmax_departure.from_),
+                       saw<kChSawType>{right_next, ch_traffic_days}.departure(
+                           minmax_arrival.to_)});  // TODO min/max bounds?
+
+          std::cout << "filter: dep:" << minmax_departure << " "
+                    << "mam:" << minmax_departure_mam
+                    << " arr:" << minmax_arrival << " "
+                    << "segmentdep: left: " << arrival_left
+                    << " next:" << arrival_left_next
+                    << " min_max: " << min_max_saw.max() << " min_min: "
+                    << saw<kChSawType>{min_min_dist, ch_traffic_days}.min()
+                    << std::endl;
+
           // TODO min/max bounds?
 
           unpacked_arr++;
@@ -785,12 +809,6 @@ void obtain_relevant_stops(timetable const& tt,
                               ch_traffic_days},
               true, dep_max_saw);
           tmp_saw.clear();
-
-          auto const arrival_left_next = get_mam_interval(
-              interval{saw<kChSawType>{left_next, ch_traffic_days}.arrival(
-                           minmax_departure.from_),
-                       saw<kChSawType>{right_next, ch_traffic_days}.departure(
-                           minmax_arrival.to_)});  // TODO min/max bounds?
 
           unpacked_dep++;
           if (saw<kChSawType>{dep_max_saw, ch_traffic_days}.less(
