@@ -127,10 +127,12 @@ struct timetable {
   void resolve();
 
   bitfield_idx_t register_bitfield(bitfield const& b);
-  route_idx_t register_route(basic_string<stop::value_type> const& stop_seq,
-                             basic_string<clasz> const& clasz_sections,
-                             bitvec const& bikes_allowed_per_section,
-                             bitvec const& cars_allowed_per_section);
+  route_idx_t register_route(
+      basic_string<stop::value_type> const& stop_seq,
+      basic_string<clasz> const& clasz_sections,
+      bitvec const& bikes_allowed_per_section,
+      bitvec const& cars_allowed_per_section,
+      bitvec const& wheelchair_accessibility_per_section);
   void finish_route();
 
   provider_idx_t get_provider_idx(std::string_view id, source_idx_t) const;
@@ -142,6 +144,14 @@ struct timetable {
   void add_transport(transport&& t);
 
   transport_idx_t next_transport_idx() const;
+
+  bool is_transport_active(transport_idx_t const t, day_idx_t const day) const {
+    return bitfields_[transport_traffic_days_[t]].test(to_idx(day));
+  }
+
+  bool is_route_active(route_idx_t const r, day_idx_t const day) const {
+    return bitfields_[route_traffic_days_[r]].test(to_idx(day));
+  }
 
   std::span<delta const> event_times_at_stop(route_idx_t const r,
                                              stop_idx_t const stop_idx,
@@ -268,6 +278,11 @@ struct timetable {
            route_bikes_allowed_[to_idx(r) * 2U + 1U];
   }
 
+  bool has_wheelchair_transport(route_idx_t const r) const {
+    return route_wheelchair_accessible_[to_idx(r) * 2U] ||
+           route_wheelchair_accessible_[to_idx(r) * 2U + 1U];
+  }
+
   // Schedule range.
   interval<date::sys_days> date_range_;
 
@@ -304,7 +319,7 @@ struct timetable {
     vector_map<route_id_idx_t, category_idx_t> route_id_category_;
     vector_map<route_id_idx_t, translation_idx_t> route_id_short_names_;
     vector_map<route_id_idx_t, translation_idx_t> route_id_long_names_;
-    vector_map<route_id_idx_t, translation_idx_t> rotue_id_url_;
+    vector_map<route_id_idx_t, translation_idx_t> route_id_url_;
     vector_map<route_id_idx_t, route_type_t> route_id_type_;
     vector_map<route_id_idx_t, provider_idx_t> route_id_provider_;
     vector_map<route_id_idx_t, route_color> route_id_colors_;
@@ -353,6 +368,9 @@ struct timetable {
   // same for cars
   bitvec route_cars_allowed_;
 
+  // same for wheelchair accssibility
+  bitvec route_wheelchair_accessible_;
+
   // Route -> bikes allowed per section
   // Only set for routes where the entry in route_bikes_allowed_bitvec_
   // is set to "bikes along parts of the route"
@@ -360,6 +378,9 @@ struct timetable {
 
   // same for cars
   vecvec<route_idx_t, bool> route_cars_allowed_per_section_;
+
+  // same for wheelchair accessibility
+  vecvec<route_idx_t, bool> route_wheelchair_accessibility_per_section_;
 
   // Location -> list of routes
   vecvec<location_idx_t, route_idx_t> location_routes_;
@@ -388,6 +409,9 @@ struct timetable {
 
   // Trip index -> traffic day bitfield
   vector_map<transport_idx_t, bitfield_idx_t> transport_traffic_days_;
+
+  // Route -> traffic day bitfield
+  vector_map<route_idx_t, bitfield_idx_t> route_traffic_days_;
 
   // Unique bitfields
   vector_map<bitfield_idx_t, bitfield> bitfields_;
