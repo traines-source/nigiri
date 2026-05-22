@@ -325,6 +325,7 @@ void obtain_relevant_stops(timetable const& tt,
             edge_max.push_back(saw<saw_type::kConstant>::of(start.duration()));
             edge_min.push_back(saw<saw_type::kConstant>::of(start.duration()));
             mark_mp(x, dir);
+            mark_relevant_stop(x);  // TODO fix
             auto const d =
                 static_cast<ch_label::dist_t>(start.duration().count());
             pq.push(
@@ -719,7 +720,7 @@ void obtain_relevant_stops(timetable const& tt,
 
           saw<kChSawType>{left_next, ch_traffic_days}.concat(
               kForward, saw<kChSawType>{right_next, ch_traffic_days},
-              ch_edge_idx_t::invalid(), ch_edge_idx_t::invalid(), true,
+              ch_edge_idx_t::invalid(), ch_edge_idx_t::invalid(), false,
               new_min_dist);
 
           unpacked_transfers++;
@@ -774,17 +775,26 @@ void obtain_relevant_stops(timetable const& tt,
           auto const arrival_left_next = get_mam_interval(
               interval{saw<kChSawType>{left_next, ch_traffic_days}.arrival(
                            minmax_departure.from_),
-                       saw<kChSawType>{right_next, ch_traffic_days}.departure(
+                       saw<kChSawType>{c.right_, ch_traffic_days}.departure(
                            minmax_arrival.to_)});  // TODO min/max bounds?
 
-          std::cout << "filter: dep:" << minmax_departure << " "
-                    << "mam:" << minmax_departure_mam
-                    << " arr:" << minmax_arrival << " "
-                    << "segmentdep: left: " << arrival_left
-                    << " next:" << arrival_left_next
-                    << " min_max: " << min_max_saw.max() << " min_min: "
-                    << saw<kChSawType>{min_min_dist, ch_traffic_days}.min()
-                    << std::endl;
+          if (arrival_left.size() == 0 ||
+              arrival_left_next.size() == 0) {  // TODO exclusive to?
+            // std::cout << "skip due interval" << std::endl;
+            continue;
+          }
+
+          if (unpacked_arr % 1000 == 0) {
+            std::cout << "filter: dep:" << minmax_departure << " "
+                      << "mam:" << minmax_departure_mam
+                      << " arr:" << minmax_arrival << " "
+                      << "segmentdep: left: " << arrival_left
+                      << " next:" << arrival_left_next
+                      << " min_max: " << min_max_saw.max() << " min_min: "
+                      << saw<kChSawType>{min_min_dist, ch_traffic_days}.min()
+                      << left_next.size() << " " << right_next.size() << " "
+                      << c.left_.size() << " " << c.right_.size() << std::endl;
+          }
 
           // TODO min/max bounds?
 
@@ -1150,9 +1160,11 @@ void obtain_relevant_stops(timetable const& tt,
                             ch_traffic_days}
                 .min()
                 .count(),
-            edge_min.at(kForward ? prev_label
-                                 : dists[kReverse][l.l_]),  // TODO avoid copy
-            edge_min.at(kForward ? dists[kForward][l.l_] : prev_label));
+            edge_min.at(l.dir_ == kForward
+                            ? prev_label
+                            : dists[kForward][l.l_]),  // TODO avoid copy
+            edge_min.at(l.dir_ == kForward ? dists[kReverse][l.l_]
+                                           : prev_label));
 
         /*queue.push({e_idx,
                     static_cast<ch_label::dist_t>(
