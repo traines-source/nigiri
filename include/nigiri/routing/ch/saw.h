@@ -1273,16 +1273,15 @@ struct saw {
       return std::min(
           static_cast<std::int16_t>(arrival - saw_[0].travel_dur_.count()),
           max);
-    } else {
-      auto it = begin();
-      for (;; ++it) {
-        if (it->mam_ + it->travel_dur_.count() + it.day_offset_ * 1440 <=
-            arrival_mam) {  // TODO other saw types
-          return std::min(
-              static_cast<std::int16_t>(
-                  it->mam_ + (arrival / 1440 + it.day_offset_) * 1440),
-              max);
-        }
+    }
+    auto it = begin();
+    for (;; ++it) {
+      if (it->mam_ + it->travel_dur_.count() + it.day_offset_ * 1440 <=
+          arrival_mam) {  // TODO other saw types
+        return std::min(
+            static_cast<std::int16_t>(it->mam_ +
+                                      (arrival / 1440 + it.day_offset_) * 1440),
+            max);
       }
     }
     return max;

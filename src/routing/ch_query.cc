@@ -495,14 +495,22 @@ void obtain_relevant_stops(timetable const& tt,
   auto const min_max_saw = saw<kChSawType>{min_max_dist, ch_traffic_days};
   auto i = 0U;
   auto rit = min_max_saw.end();
-  for (--rit;; --rit) {
-    if (rit->mam_ >= start_mam || rit.day_offset_ > 0) {
-      ++i;
-      if (i >= q.min_connection_count_) {  // TODO searchWindow?
-        break;
+  auto const not_const = !min_max_dist.empty() && !min_max_saw.is_constant();
+  if (not_const) {
+    for (--rit;; --rit) {
+      if (rit->mam_ >= start_mam || rit.day_offset_ > 0) {
+        ++i;
+        if (i >= q.min_connection_count_) {  // TODO searchWindow?
+          break;
+        }
       }
     }
   }
+
+  auto const minmax_departure = interval{
+      static_cast<std::int16_t>(start_mam),
+      static_cast<std::int16_t>(not_const ? rit->mam_ + rit.day_offset_ * 1440
+                                          : start_mam)};  // TODO arriveBy, utc?
 
   auto const get_mam_interval = [&](interval<std::int16_t> intvl) {
     if (intvl.size() >= 1440) {
@@ -517,11 +525,6 @@ void obtain_relevant_stops(timetable const& tt,
         static_cast<std::int16_t>((intvl.from_ % 1440 + 1440) % 1440),
         static_cast<std::int16_t>((intvl.to_ % 1440 + 1440) % 1440)};
   };
-
-  auto const minmax_departure =
-      interval{static_cast<std::int16_t>(start_mam),
-               static_cast<std::int16_t>(
-                   rit->mam_ + rit.day_offset_ * 1440)};  // TODO arriveBy, utc?
 
   if (minmax_departure.size() > 1440) {
     relevant_stops.one_out();
@@ -1102,7 +1105,7 @@ void obtain_relevant_stops(timetable const& tt,
         }*/
       } else {
 
-        auto const arrival_x =
+        /*auto const arrival_x =
             l.dir_ == kForward
                 ? interval{saw<kChSawType>{edge_min.at(prev_label),
                                            ch_traffic_days}
@@ -1121,9 +1124,10 @@ void obtain_relevant_stops(timetable const& tt,
                                saw<kChSawType>{edge_min.at(dists[l.dir_][l.l_]),
                                                ch_traffic_days}
                                    .departure(minmax_arrival.from_)),
-                      min_dist_via_prev.departure(minmax_arrival.to_)};
+                      min_dist_via_prev.departure(minmax_arrival.to_)}; // TODO
+        buffer overflow???
 
-        auto const arrival = get_mam_interval(arrival_x);
+        auto const arrival = get_mam_interval(arrival_x);*/
 
         tmp_saw.clear();
         new_min_dist.clear();
@@ -1180,12 +1184,12 @@ void obtain_relevant_stops(timetable const& tt,
 
         ++interval_edges;
 
-        if (arrival.size() == 0) {  // TODO exclusive to?
+        /*if (arrival.size() == 0) {  // TODO exclusive to?
           // std::cout << "skip due interval" << std::endl;
           tmp_saw.clear();
           new_min_dist.clear();
           continue;
-        }
+        }*/
 
         // TODO pop?
         // mark_relevant_stop(edge_target);
