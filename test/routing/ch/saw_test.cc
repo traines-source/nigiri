@@ -74,7 +74,7 @@ TEST(ch, saw_day_test) {
     EXPECT_EQ(s3.to_saw(td).max().count(), 1450);
 
     auto const s6 = owning_saw<routing::saw_type::kDay>{{}, u16_minutes{0}};
-    EXPECT_EQ(s6.to_saw(td).max().count(), kMaxTravelTime.count());
+    EXPECT_EQ(s6.to_saw(td).max().count(), kChMaxTravelTime.count());
   }
   {
     auto tmp = std::vector<tooth>{};
@@ -326,7 +326,7 @@ TEST(ch, saw_traffic_days_test) {
          metadata_tooth(),
          {1001U, u16_minutes{10}, bitfield_idx_t{0}}},
         u16_minutes{0}};
-    EXPECT_EQ(s4.to_saw(traffic_days_1).max().count(), kMaxTravelTime.count());
+    EXPECT_EQ(s4.to_saw(traffic_days_1).max().count(), kChMaxTravelTime.count());
 
     auto const s5 = owning_saw<routing::saw_type::kTrafficDays>{
         {metadata_tooth(9U),
@@ -334,11 +334,11 @@ TEST(ch, saw_traffic_days_test) {
          metadata_tooth(),
          {1001U, u16_minutes{10}, bitfield_idx_t{1}}},
         u16_minutes{0}};
-    EXPECT_EQ(s5.to_saw(traffic_days_1).max().count(), kMaxTravelTime.count());
+    EXPECT_EQ(s5.to_saw(traffic_days_1).max().count(), kChMaxTravelTime.count());
 
     auto const s6 =
         owning_saw<routing::saw_type::kTrafficDays>{{}, u16_minutes{0}};
-    EXPECT_EQ(s6.to_saw(traffic_days_1).max().count(), kMaxTravelTime.count());
+    EXPECT_EQ(s6.to_saw(traffic_days_1).max().count(), kChMaxTravelTime.count());
   }
   {
     auto const s3 = owning_saw<routing::saw_type::kTrafficDays>{

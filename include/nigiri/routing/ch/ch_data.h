@@ -26,8 +26,10 @@ enum class saw_type : std::uint8_t {
 };
 
 static constexpr auto const kChSawType = saw_type::kDay;
+static constexpr auto const kChMaxTravelTime =
+    routing::kMaxTravelTime * 5;  // TODO
 static constexpr auto const kChMaxEdgeTime =
-    u16_minutes{routing::kMaxTravelTime.count()};  // TODO
+    u16_minutes{routing::kMaxTravelTime.count()*3};  // TODO
 static constexpr auto const kChMaxWaitingTime =
     u16_minutes{1440};  // TODO one day should be sufficient, but this
                         // prolonged avg times?

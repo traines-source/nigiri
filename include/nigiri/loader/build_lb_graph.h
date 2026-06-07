@@ -31,8 +31,7 @@ namespace nigiri::loader {
 
 using namespace nigiri::routing;
 
-static constexpr auto const kChMaxTravelTime =
-    routing::kMaxTravelTime * 5;  // TODO
+
 
 static constexpr auto const kEnableCh = true;
 static constexpr auto const kChGroupParents = true;
@@ -423,7 +422,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
           ++a_it;
 
           if (a_it.day_offset_ != day_offset) {
-            if (a_it.day_offset_ * -1 > routing::kMaxTravelTime / 1_days) {
+            if (a_it.day_offset_ * -1 > kChMaxEdgeTime / kChDay) {
               break;
             }
             remaining_traffic_days >>= 1U;

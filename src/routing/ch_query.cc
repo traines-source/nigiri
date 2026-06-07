@@ -24,7 +24,6 @@
 
 namespace nigiri::routing {
 
-static constexpr auto const kChMaxTravelTime = kMaxTravelTime * 5;  // TODO
 static constexpr auto const kChMaxAdditionalTransfers = kMaxTransfers;  // TODO
 static constexpr auto const kToothUnpackMode = false;
 static constexpr auto const kDirectUnpackMode = false;
@@ -526,10 +525,11 @@ void obtain_relevant_stops(timetable const& tt,
         static_cast<std::int16_t>((intvl.to_ % 1440 + 1440) % 1440)};
   };
 
+  std::cout << minmax_departure << " weird" << std::endl;
   if (minmax_departure.size() > 1440) {
     relevant_stops.one_out();
     std::cout << "24h filter, skipping ch" << std::endl;
-    return;
+    //return;
   }
 
   auto const minmax_departure_mam = get_mam_interval(minmax_departure);

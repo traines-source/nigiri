@@ -443,7 +443,7 @@ struct saw {
 
   std::pair<u16_minutes, size_t> _max() const {
     if (saw_.empty()) {
-      return {u16_minutes{kMaxTravelTime.count()}, 0U};
+      return {u16_minutes{kChMaxTravelTime.count()}, 0U};
     }
     if (is_constant()) {
       return {saw_[0].travel_dur_, 0U};
@@ -498,7 +498,7 @@ struct saw {
       }
     }
     if (max == 0) {
-      return {u16_minutes{kMaxTravelTime.count()},
+      return {u16_minutes{kChMaxTravelTime.count()},
               max_tooth};  // TODO handle connections that only run on a
                            // single occasion, but multiple times (depending
                            // on proportion of loaded timetable -> kMax?)
@@ -510,8 +510,8 @@ struct saw {
 
   std::pair<u16_minutes, u16_minutes> min_max_waiting_time() const {
     if (saw_.empty()) {
-      return {u16_minutes{kMaxTravelTime.count()},
-              u16_minutes{kMaxTravelTime.count()}};
+      return {u16_minutes{kChMaxTravelTime.count()},
+              u16_minutes{kChMaxTravelTime.count()}};
     }
     if (is_constant()) {
       return {u16_minutes{0}, u16_minutes{0}};
@@ -539,7 +539,7 @@ struct saw {
           max = std::max(max, mam_diff);
           break;
         }
-        if (a_it.day_offset_ > routing::kMaxTravelTime / 1_days) {
+        if (a_it.day_offset_ > kChMaxEdgeTime / kChDay) {
           break;
         }
         if (day_offset != a_it.day_offset_) {
@@ -562,7 +562,7 @@ struct saw {
 
   u16_minutes max_travel_dur() const {
     if (saw_.empty()) {
-      return u16_minutes{kMaxTravelTime.count()};
+      return u16_minutes{kChMaxTravelTime.count()};
     }
     if (is_constant()) {
       return saw_.front().travel_dur_;
@@ -576,7 +576,7 @@ struct saw {
 
   u16_minutes min() const {
     if (saw_.empty()) {
-      return u16_minutes{kMaxTravelTime.count()};
+      return u16_minutes{kChMaxTravelTime.count()};
     }
     if (is_constant()) {
       return saw_.front().travel_dur_;
@@ -791,7 +791,7 @@ struct saw {
     }
     auto interleaved_min = static_cast<std::int16_t>(
         std::min(min(), other.min()).count());  // TODO remove
-    auto new_min = u16_minutes{kMaxTravelTime.count()};
+    auto new_min = u16_minutes{kChMaxTravelTime.count()};
     auto const lsb = std::max(get_last_set_bit(), other.get_last_set_bit());
     init_metadata(out, lsb);
     auto const interleaved = interleaved_saws<SawType>{*this, other};
@@ -888,7 +888,7 @@ struct saw {
                                 saw<saw_type::kConstant>{saw_, traffic_days_},
                                 end, start, out);
     }
-    auto new_min = u16_minutes{kMaxTravelTime.count()};
+    auto new_min = u16_minutes{kChMaxTravelTime.count()};
     auto const_min_other = 0;
     if (SawType == saw_type::kTrafficDays && !max) {  // TODO constexpr
       const_min_other = other.min().count();
