@@ -78,7 +78,7 @@ void obtain_relevant_stops(timetable const& tt,
 
   auto pq = dial<ch_label, ch_get_bucket>{
       (loader::kEnableDgp ? kDistanceGroups + 1U
-                          : std::numeric_limits<std::uint16_t>::max())};
+                          : tt.n_locations())};
   auto ch_traffic_days =
       traffic_days{tt.ch_traffic_days_[prf_idx], {}};  // TODO avoid copy
 
@@ -163,8 +163,7 @@ void obtain_relevant_stops(timetable const& tt,
   };
 
   auto const follow_edges = [&](location_idx_t const l, unsigned const l_dir,
-                                u16_minutes const const_dist,
-                                std::array<ch_label::dist_t, 2> const& dist) {
+                                u16_minutes const const_dist) {
     auto const other_dir = l_dir ^ 1U;
     auto const& graph = l_dir == kForward ? tt.fwd_search_ch_graph_[prf_idx]
                                           : tt.bwd_search_ch_graph_[prf_idx];
@@ -287,10 +286,10 @@ void obtain_relevant_stops(timetable const& tt,
          " " << tt.get_default_translation(tt.locations_.names_.at(edge_target))
                 << " minmay " << const_min << " " << const_max << std::endl;*/
 
-      auto const const_min_edge =
+      /*auto const const_min_edge =
           saw<kChSawType>{tt.ch_graph_min_[prf_idx].at(e_idx), ch_traffic_days}
               .min();
-      /*if (dist[kMax] + const_min_edge.count() >= kChMaxTravelTime.count()) {
+      if (dist[kMax] + const_min_edge.count() >= kChMaxTravelTime.count()) {
 
         std::cout << "extra extra weird " << dist[kMax] << " "
                   << const_min_edge.count() << std::endl;
@@ -299,10 +298,8 @@ void obtain_relevant_stops(timetable const& tt,
       }*/
       pq.push(ch_label{
           edge_target,
-          {kEnableDgp ? distance_group(edge_target)
-                      : static_cast<ch_label::dist_t>(dist[kMax] +
-                                                      const_min_edge.count()),
-           static_cast<ch_label::dist_t>(nonce_map.at(edge_target) + 1)},
+          kEnableDgp ? distance_group(edge_target)
+                      : tt.ch_levels_[prf_idx].at(edge_target),
           static_cast<std::uint8_t>(l_dir)});
       //}
     }
@@ -326,12 +323,10 @@ void obtain_relevant_stops(timetable const& tt,
             edge_min.push_back(saw<saw_type::kConstant>::of(start.duration()));
             mark_mp(x, dir);
             // mark_relevant_stop(x);  // TODO fix
-            auto const d =
-                static_cast<ch_label::dist_t>(start.duration().count());
             pq.push(
                 ch_label{x,
-                         {kEnableDgp ? distance_group(x) : d,
-                          static_cast<ch_label::dist_t>(nonce_map.at(x) + 1)},
+                  kEnableDgp ? distance_group(x)
+                  : tt.ch_levels_[prf_idx].at(x),
                          dir});
             std::cout << "input" << x << " " << start.duration() << " "
                       << (dir == kForward ? "fw " : "bw ")
@@ -351,11 +346,11 @@ void obtain_relevant_stops(timetable const& tt,
     auto const l_dir = l.dir_ % kModeOffset;
     auto const other_dir = l_dir ^ 1U;
 
-    if (tt.ch_levels_[prf_idx].at(l.l_) <= nonce_map.at(l.l_)) {
+    if (l.level_ <= nonce_map.at(l.l_)) {
       //
       continue;  // TODO
     }
-    nonce_map.at(l.l_) = tt.ch_levels_[prf_idx].at(l.l_);
+    nonce_map.at(l.l_) = l.level_;
 
     /*if (dists[l_dir].at(l.l_).d_[kMax].to_saw(ch_traffic_days).max().count() <
             l.d_[kMax] &&  // TODO extrema
@@ -365,7 +360,6 @@ void obtain_relevant_stops(timetable const& tt,
     }*/
     std::cout << "steop " << l.l_ << " "
               << tt.get_default_translation(tt.locations_.names_.at(l.l_))
-              << " nonce: " << l.d_[kMin] << " " << " max: " << l.d_[kMax]
               << " other:"
               << saw<kChSawType>{edge_max.at(dists[other_dir][l.l_]),
                                  ch_traffic_days}
@@ -378,8 +372,8 @@ void obtain_relevant_stops(timetable const& tt,
               << std::endl;*/
     // mark_mp(l.l_, l_dir);
     //  std::cout << "mmd" << min_max_dist << std::endl;
-    if (saw<kChSawType>{edge_min.at(dists[l_dir].at(l.l_)), ch_traffic_days} >
-        saw<kChSawType>{min_max_dist, ch_traffic_days}) {
+    if (saw<kChSawType>{edge_min.at(dists[l_dir].at(l.l_)), ch_traffic_days}.min() >
+        saw<kChSawType>{min_max_dist, ch_traffic_days}.max()) {
       /*if (mode == kMax) {
         auto buffer = std::vector<ch_label>{};
         while (!pq.empty()) {
@@ -408,17 +402,16 @@ void obtain_relevant_stops(timetable const& tt,
       }*/
       // TODO reinstate early stopping
       std::cout << "reached ḿax with min " << counter << std::endl;
-      // break;
+      continue;
     }
 
     //    std::cout << "follow " << mode << l.l_ << std::endl;
-    follow_edges(l.l_, l_dir, u16_minutes::max(), l.d_);
+    follow_edges(l.l_, l_dir, u16_minutes::max());
   }
   pq.clear();
 
-  auto const invert = [&](ch_label::dist_t d) {
-    return static_cast<ch_label::dist_t>(
-        std::numeric_limits<std::uint16_t>::max() - d);
+  auto const invert = [&](std::uint32_t l) {
+    return tt.n_locations()-l;
   };
 
   for (auto const m : meetpoints) {
@@ -469,15 +462,13 @@ void obtain_relevant_stops(timetable const& tt,
           saw<kChSawType>{edge_max.at(dists[dir][m]), ch_traffic_days}, true,
           tmp_saw);
       // std::swap(edge_max.at(dists[dir][m]), tmp_saw);
-      auto const d = static_cast<ch_label::dist_t>(
-          saw<kChSawType>{tmp_saw, ch_traffic_days}.max().count());
+   
       tmp_saw.clear();
       new_max_dist.clear();
       pq.push(ch_label{m,
-                       {invert(kEnableDgp ? kDistanceGroups : d),
-                        static_cast<ch_label::dist_t>(nonce_map.at(m) + 1)},
+       invert(kEnableDgp ? kDistanceGroups : tt.ch_levels_[prf_idx].at(m)),
                        static_cast<std::uint8_t>(dir)});
-      std::cout << "added mp " << d << std::endl;
+      std::cout << "added mp " << m << std::endl;
     }
   }
 
@@ -529,7 +520,7 @@ void obtain_relevant_stops(timetable const& tt,
   if (minmax_departure.size() > 1440) {
     relevant_stops.one_out();
     std::cout << "24h filter, skipping ch" << std::endl;
-    //return;
+    // return;
   }
 
   auto const minmax_departure_mam = get_mam_interval(minmax_departure);
@@ -821,7 +812,7 @@ void obtain_relevant_stops(timetable const& tt,
                       << " min_max: " << min_max_saw.max() << " min_min: "
                       << saw<kChSawType>{min_min_dist, ch_traffic_days}.min()
                       << left_next.size() << " " << right_next.size() << " "
-                      << c.left_.size() << " " << c.right_.size() << std::endl;
+                      << c.left_.size() << " " << c.right_.size() << "intvls: " << c.departure_ << " " << c.arrival_ << std::endl;
           }
 
           // TODO min/max bounds?
@@ -948,12 +939,11 @@ void obtain_relevant_stops(timetable const& tt,
 
   while (!pq.empty()) {
     auto l = pq.top();
-    auto const l_d_max = static_cast<int>(invert(l.d_[kMax]));
     auto const other_dir = l.dir_ ^ 1U;
     pq.pop();
 
-    if (tt.ch_levels_[prf_idx].at(l.l_) <= nonce_map.at(l.l_)) {
-      // continue;
+    if (l.level_ <= nonce_map.at(l.l_)) {
+      continue;
     }
     /*std::cout << "xxdown " << l.l_ << " "
               << tt.get_default_translation(tt.locations_.names_.at(l.l_))
@@ -961,7 +951,7 @@ void obtain_relevant_stops(timetable const& tt,
               << " max: " << l_d_max << " nonce: " << l.d_[kMin]
               << " dir:" << (l.dir_ == kForward ? "fwd" : "bwd")
               << "| l:" << tt.ch_levels_[prf_idx].at(l.l_) << std::endl;*/
-    nonce_map.at(l.l_) = tt.ch_levels_[prf_idx].at(l.l_);
+    nonce_map.at(l.l_) = l.level_;
 
     tmp_saw.clear();
     new_max_dist.clear();
@@ -1038,9 +1028,9 @@ void obtain_relevant_stops(timetable const& tt,
       if (tt.ch_levels_[prf_idx][l.l_] < tt.ch_levels_[prf_idx][edge_target]) {
         continue;
       }
-      if (kEnableDgp && l_d_max == distance_group(edge_target)) {
+      /*if (kEnableDgp && l_d_max == distance_group(edge_target)) {
         continue;
-      }
+      }*/
       auto const& prev_label = dists[l.dir_][edge_target];
       ++prevlabel_edges;
 
@@ -1324,21 +1314,13 @@ void obtain_relevant_stops(timetable const& tt,
                        .max()
                        .count()
                 << std::endl;*/
-      auto const diff = std::max(l_d_max - static_cast<int>(x.count()), 0);
 
       // std::cout << "pq_push" << std::endl;
       pq.push(ch_label{
           edge_target,
-          {invert(kEnableDgp
+          invert(kEnableDgp
                       ? distance_group(edge_target)
-                      : std::min(static_cast<ch_label::dist_t>(diff),
-                                 saw<kChSawType>{
-                                     edge_max.at(dists[l.dir_][edge_target]),
-                                     ch_traffic_days}
-                                     .max()
-                                     .count())),
-           static_cast<ch_label::dist_t>(nonce_map[edge_target] +
-                                         1)},  // TODO is this correct?
+                      : tt.ch_levels_[prf_idx].at(edge_target)),
           static_cast<std::uint8_t>(l.dir_)});
 
       tmp_saw.clear();

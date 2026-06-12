@@ -1447,19 +1447,16 @@ struct interleaved_saws {
 };
 
 struct ch_label {
-  using dist_t = std::uint16_t;
   friend bool operator>(ch_label const& a, ch_label const& b) {
-    return a.d_[a.dir_ / kModeOffset] > b.d_[b.dir_ / kModeOffset];
+    return a.level_ > b.level_;
   }
   location_idx_t l_;
-  std::array<dist_t, 2> d_;
+  std::uint32_t level_;
   std::uint8_t dir_;
 };
 
 struct ch_get_bucket {
-  ch_label::dist_t operator()(ch_label const& l) const {
-    return l.d_[l.dir_ / kModeOffset];
-  }
+  std::uint32_t operator()(ch_label const& l) const { return l.level_; }
 };
 
 }  // namespace nigiri::routing

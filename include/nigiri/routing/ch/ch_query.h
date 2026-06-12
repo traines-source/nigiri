@@ -18,14 +18,14 @@ void obtain_relevant_stops(timetable const& tt,
 
 struct unpack_label {
   friend bool operator>(unpack_label const& a, unpack_label const& b) {
-    return a.l_ > b.l_;
+    return a.level_ > b.level_;
   }
-  std::uint32_t l_;
+  std::uint32_t level_;
   ch_edge_idx_t e_;
 };
 
 struct unpack_get_bucket {
-  std::uint32_t operator()(unpack_label const& l) const { return l.l_; }
+  std::uint32_t operator()(unpack_label const& l) const { return l.level_; }
 };
 
 struct unpack_container {
