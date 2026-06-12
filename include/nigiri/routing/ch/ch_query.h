@@ -36,6 +36,8 @@ struct unpack_container {
   std::vector<tooth> total_max_dur_saw_;
   std::vector<tooth> left_;
   std::vector<tooth> right_;
+  interval<std::int16_t> departure_;
+  interval<std::int16_t> arrival_;
 };
 
 }  // namespace nigiri::routing

@@ -422,7 +422,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
           ++a_it;
 
           if (a_it.day_offset_ != day_offset) {
-            if (a_it.day_offset_ * -1 > kChMaxEdgeTime / kChDay) {
+            if (a_it.day_offset_ * -1 > std::max(kChMaxEdgeTime.count(), static_cast<std::uint16_t>(tt.external_interval().size() / kChDay / 2))) {
               break;
             }
             remaining_traffic_days >>= 1U;
@@ -864,7 +864,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
   auto const compute_ch = [&]() {
     print_stats();
     tt.ch_levels_[prf_idx].resize(static_cast<unsigned>(tt.n_locations()));
-    auto pq = dial<routing::label, routing::get_bucket>{20001};
+    //auto pq = dial<routing::label, routing::get_bucket>{20001};
     auto current_order = std::vector<location_idx_t>{};
     current_order.resize(tt.n_locations());
     auto write_ahead_edges = std::vector<ch_edge_idx_t>{};
