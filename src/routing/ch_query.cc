@@ -73,12 +73,12 @@ void obtain_relevant_stops(timetable const& tt,
   std::array<vector_map<location_idx_t, ch_edge_idx_t>, 2> dists;
   dists[0].resize(tt.n_locations());
   dists[1].resize(tt.n_locations());
-  auto nonce_map = vector_map<location_idx_t, std::uint32_t>{};
-  nonce_map.resize(tt.n_locations());
+  auto nonce_map = std::array<vector_map<location_idx_t, std::uint32_t>, 2>{};
+  nonce_map[kForward].resize(tt.n_locations());
+  nonce_map[kReverse].resize(tt.n_locations());
 
   auto pq = dial<ch_label, ch_get_bucket>{
-      (loader::kEnableDgp ? kDistanceGroups + 1U
-                          : tt.n_locations())};
+      (loader::kEnableDgp ? kDistanceGroups + 1U : tt.n_locations())};
   auto ch_traffic_days =
       traffic_days{tt.ch_traffic_days_[prf_idx], {}};  // TODO avoid copy
 
@@ -296,11 +296,10 @@ void obtain_relevant_stops(timetable const& tt,
 
         throw utl::fail("extra extra weird");
       }*/
-      pq.push(ch_label{
-          edge_target,
-          kEnableDgp ? distance_group(edge_target)
-                      : tt.ch_levels_[prf_idx].at(edge_target),
-          static_cast<std::uint8_t>(l_dir)});
+      pq.push(ch_label{edge_target,
+                       kEnableDgp ? distance_group(edge_target)
+                                  : tt.ch_levels_[prf_idx].at(edge_target),
+                       static_cast<std::uint8_t>(l_dir)});
       //}
     }
   };
@@ -323,11 +322,10 @@ void obtain_relevant_stops(timetable const& tt,
             edge_min.push_back(saw<saw_type::kConstant>::of(start.duration()));
             mark_mp(x, dir);
             // mark_relevant_stop(x);  // TODO fix
-            pq.push(
-                ch_label{x,
-                  kEnableDgp ? distance_group(x)
-                  : tt.ch_levels_[prf_idx].at(x),
-                         dir});
+            pq.push(ch_label{
+                x,
+                kEnableDgp ? distance_group(x) : tt.ch_levels_[prf_idx].at(x),
+                dir});
             std::cout << "input" << x << " " << start.duration() << " "
                       << (dir == kForward ? "fw " : "bw ")
                       << tt.get_default_translation(tt.locations_.names_.at(x))
@@ -346,11 +344,11 @@ void obtain_relevant_stops(timetable const& tt,
     auto const l_dir = l.dir_ % kModeOffset;
     auto const other_dir = l_dir ^ 1U;
 
-    if (l.level_ <= nonce_map.at(l.l_)) {
-      //
-      continue;  // TODO
+    auto const lvl = l.level_;
+    if (nonce_map[l.dir_].at(l.l_)) {
+      continue;
     }
-    nonce_map.at(l.l_) = l.level_;
+    nonce_map[l.dir_].at(l.l_) = lvl;
 
     /*if (dists[l_dir].at(l.l_).d_[kMax].to_saw(ch_traffic_days).max().count() <
             l.d_[kMax] &&  // TODO extrema
@@ -372,8 +370,8 @@ void obtain_relevant_stops(timetable const& tt,
               << std::endl;*/
     // mark_mp(l.l_, l_dir);
     //  std::cout << "mmd" << min_max_dist << std::endl;
-    if (saw<kChSawType>{edge_min.at(dists[l_dir].at(l.l_)), ch_traffic_days}.min() >
-        saw<kChSawType>{min_max_dist, ch_traffic_days}.max()) {
+    if (saw<kChSawType>{edge_min.at(dists[l_dir].at(l.l_)), ch_traffic_days}
+            .min() > saw<kChSawType>{min_max_dist, ch_traffic_days}.max()) {
       /*if (mode == kMax) {
         auto buffer = std::vector<ch_label>{};
         while (!pq.empty()) {
@@ -410,9 +408,7 @@ void obtain_relevant_stops(timetable const& tt,
   }
   pq.clear();
 
-  auto const invert = [&](std::uint32_t l) {
-    return tt.n_locations()-l;
-  };
+  auto const invert = [&](std::uint32_t l) { return tt.n_locations() - l; };
 
   for (auto const m : meetpoints) {
     saw<kChSawType>{edge_min.at(dists[kForward][m]), ch_traffic_days}.concat(
@@ -462,12 +458,13 @@ void obtain_relevant_stops(timetable const& tt,
           saw<kChSawType>{edge_max.at(dists[dir][m]), ch_traffic_days}, true,
           tmp_saw);
       // std::swap(edge_max.at(dists[dir][m]), tmp_saw);
-   
+
       tmp_saw.clear();
       new_max_dist.clear();
-      pq.push(ch_label{m,
-       invert(kEnableDgp ? kDistanceGroups : tt.ch_levels_[prf_idx].at(m)),
-                       static_cast<std::uint8_t>(dir)});
+      pq.push(ch_label{
+          m,
+          invert(kEnableDgp ? kDistanceGroups : tt.ch_levels_[prf_idx].at(m)),
+          static_cast<std::uint8_t>(dir)});
       std::cout << "added mp " << m << std::endl;
     }
   }
@@ -518,7 +515,7 @@ void obtain_relevant_stops(timetable const& tt,
 
   std::cout << minmax_departure << " weird" << std::endl;
   if (minmax_departure.size() > 1440) {
-    //relevant_stops.one_out();
+    // relevant_stops.one_out();
     std::cout << "24h filter, skipping ch" << std::endl;
     // return;
   }
@@ -541,8 +538,9 @@ void obtain_relevant_stops(timetable const& tt,
   auto queue = dial<unpack_label, unpack_get_bucket>{tt.n_locations()};
   auto unpacking_map = hash_map<ch_edge_idx_t, unpack_container>{};
 
-  auto const pinch_intervals = [&](ch_edge_idx_t const edge_idx, interval<std::int16_t>& left,
-    interval<std::int16_t>& right) {
+  auto const pinch_intervals = [&](ch_edge_idx_t const edge_idx,
+                                   interval<std::int16_t>& left,
+                                   interval<std::int16_t>& right) {
     auto const left_via_e = interval{
         saw<kChSawType>{tt.ch_graph_max_[prf_idx].at(edge_idx), ch_traffic_days}
             .departure(right.from_),
@@ -817,7 +815,9 @@ void obtain_relevant_stops(timetable const& tt,
                       << " min_max: " << min_max_saw.max() << " min_min: "
                       << saw<kChSawType>{min_min_dist, ch_traffic_days}.min()
                       << left_next.size() << " " << right_next.size() << " "
-                      << c.left_.size() << " " << c.right_.size() << "intvls: " << c.departure_ << " " << c.arrival_ << std::endl;
+                      << c.left_.size() << " " << c.right_.size()
+                      << "intvls: " << c.departure_ << " " << c.arrival_
+                      << std::endl;
           }
 
           // TODO min/max bounds?
@@ -876,12 +876,15 @@ void obtain_relevant_stops(timetable const& tt,
 
           auto left_intvl = c.departure_;
           auto right_intvl = c.arrival_;
-          auto center_intvl = interval{static_cast<std::int16_t>(0), std::numeric_limits<std::int16_t>::max()};
+          auto center_intvl =
+              interval{static_cast<std::int16_t>(0),
+                       std::numeric_limits<std::int16_t>::max()};
           pinch_intervals(unpack.first, left_intvl, center_intvl);
           pinch_intervals(unpack.second, center_intvl, right_intvl);
           pinch_intervals(unpack.first, left_intvl, center_intvl);
 
-          if (left_intvl.empty() || right_intvl.empty() || center_intvl.empty()) {
+          if (left_intvl.empty() || right_intvl.empty() ||
+              center_intvl.empty()) {
             continue;
           }
 
@@ -908,8 +911,8 @@ void obtain_relevant_stops(timetable const& tt,
               << "/"
                  " transfers:"
               << unpacked_transfers << " minmax:" << unpacked_minmax
-              << " arr:" << unpacked_arr << " dep:" << unpacked_dep << " pinch:" << unpacked_pinch
-              << " push:" << unpacked_push << " "
+              << " arr:" << unpacked_arr << " dep:" << unpacked_dep
+              << " pinch:" << unpacked_pinch << " push:" << unpacked_push << " "
               << tt.ch_graph_edges_[prf_idx].size() << std::endl;
     new_max_dist.clear();
   };
@@ -939,10 +942,12 @@ void obtain_relevant_stops(timetable const& tt,
     return;*/
   }
 
-  nonce_map.clear();
-  nonce_map.resize(tt.n_locations());
+  nonce_map[kForward].clear();
+  nonce_map[kReverse].clear();
+  nonce_map[kForward].resize(tt.n_locations());
+  nonce_map[kReverse].resize(tt.n_locations());
 
-  auto edge_max_dist = std::vector<tooth>{}; 
+  auto edge_max_dist = std::vector<tooth>{};
   auto pushdown_edge_max_dist = std::vector<tooth>{};
 
   while (!pq.empty()) {
@@ -950,16 +955,17 @@ void obtain_relevant_stops(timetable const& tt,
     auto const other_dir = l.dir_ ^ 1U;
     pq.pop();
 
-    if (l.level_ <= nonce_map.at(l.l_)) {
+    auto const lvl = invert(l.level_);
+    if (nonce_map[l.dir_].at(l.l_)) {
       continue;
     }
+    nonce_map[l.dir_].at(l.l_) = lvl;
     /*std::cout << "xxdown " << l.l_ << " "
               << tt.get_default_translation(tt.locations_.names_.at(l.l_))
               // << " min: " << dists[l.dir_][l.l_].d_[kMin] << " "
               << " max: " << l_d_max << " nonce: " << l.d_[kMin]
               << " dir:" << (l.dir_ == kForward ? "fwd" : "bwd")
               << "| l:" << tt.ch_levels_[prf_idx].at(l.l_) << std::endl;*/
-    nonce_map.at(l.l_) = l.level_;
 
     tmp_saw.clear();
     new_max_dist.clear();
@@ -1067,14 +1073,14 @@ void obtain_relevant_stops(timetable const& tt,
            new_min_dist[kSawFieldMin].traffic_days_ >
                std::min(kMaxTransfers + 0U,
                         min_number_transfers + kChMaxAdditionalTransfers))) {
-        if (!new_min_dist.empty()) {
+        /*if (!new_min_dist.empty()) {
           std::cout << "skip pushdown l due transfers"
                     << new_min_dist[kSawFieldMin].traffic_days_ << " "
                     << std::min(
                            kMaxTransfers + 0U,
                            min_number_transfers + kChMaxAdditionalTransfers)
                     << std::endl;
-        }
+        }*/
         tmp_saw.clear();
         new_min_dist.clear();
         continue;
@@ -1259,8 +1265,8 @@ void obtain_relevant_stops(timetable const& tt,
                                      ch_traffic_days}
                          .min()
                          .count(),
-                     edge_min.at(left_idx),
-                     edge_min.at(right_idx), left_intvl, right_intvl);
+                     edge_min.at(left_idx), edge_min.at(right_idx), left_intvl,
+                     right_intvl);
 
         /*queue.push({e_idx,
                     static_cast<ch_label::dist_t>(
@@ -1324,12 +1330,11 @@ void obtain_relevant_stops(timetable const& tt,
                 << std::endl;*/
 
       // std::cout << "pq_push" << std::endl;
-      pq.push(ch_label{
-          edge_target,
-          invert(kEnableDgp
-                      ? distance_group(edge_target)
-                      : tt.ch_levels_[prf_idx].at(edge_target)),
-          static_cast<std::uint8_t>(l.dir_)});
+      pq.push(
+          ch_label{edge_target,
+                   invert(kEnableDgp ? distance_group(edge_target)
+                                     : tt.ch_levels_[prf_idx].at(edge_target)),
+                   static_cast<std::uint8_t>(l.dir_)});
 
       tmp_saw.clear();
       ++followed_edges;
